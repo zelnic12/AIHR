@@ -17,8 +17,8 @@ npm start        # starts on http://localhost:3000
 # or: npm run dev   (auto-restart on file changes)
 ```
 
-On first start, the API seeds `data/products.json` from the catalog and creates
-an empty `data/orders.json`. These files (and `node_modules/`) are gitignored.
+The server requires a PostgreSQL database (see **Database** below). On boot it
+applies the schema automatically; seed the catalog with `npm run seed`.
 
 Once running:
 
@@ -26,12 +26,47 @@ Once running:
 - API base:   <http://localhost:3000/api>
 - Health:     <http://localhost:3000/api/health>
 
-## Data storage
+## Database (PostgreSQL)
 
-Data is persisted to JSON files under `server/data/` via a small store module
-(`src/store.js`). All data access goes through that module, so the storage
-engine can later be swapped for a real database (Postgres, Mongo, etc.) without
-changing the routers.
+Data is persisted in **PostgreSQL**. All data access goes through `src/store.js`,
+which queries the DB via a shared connection pool (`src/db/pool.js`).
+
+### Schema
+
+Five tables (`src/db/schema.sql`):
+
+- **products** — catalog (price/stock/specs as JSONB), with `updated_at` trigger.
+- **product_images** — many images per product (`ON DELETE CASCADE`), ordered by `position`.
+- **customers** — deduplicated by unique `email`; upserted on each order.
+- **orders** — public order id as PK, a **shipping snapshot**, and server-computed amounts.
+- **order_items** — line items per order with **snapshotted** product name/price.
+
+### Configuration
+
+Connection settings come from the environment — either a single `DATABASE_URL`
+or discrete vars:
+
+```bash
+# Option A
+export DATABASE_URL=postgres://user:pass@localhost:5432/voltedge
+# Option B
+export PGHOST=127.0.0.1 PGPORT=5432 PGUSER=postgres PGPASSWORD=postgres PGDATABASE=voltedge
+```
+
+### First-time setup
+
+```bash
+createdb voltedge          # create the database
+npm run db:setup           # apply schema (migrate) + load catalog (seed)
+npm start                  # migrations also run automatically on boot
+```
+
+- `npm run migrate` — apply `schema.sql` (idempotent).
+- `npm run seed` — reset product tables and load the catalog + a placeholder image per product.
+
+> **Running Postgres in the dev sandbox:** a helper is provided at
+> `scripts/pg-start.sh` (initialises and starts a local PG 15 cluster and
+> creates the `voltedge` database).
 
 ## API reference
 

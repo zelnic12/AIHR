@@ -12,7 +12,11 @@
     TAX_RATE: 0.08,               // Estimated sales tax applied at checkout.
   };
 
-  const PRODUCTS = [
+  const API_BASE = "/api";
+
+  // Product catalog. Loaded from the API via loadProducts(); the array below is
+  // a fallback so the cart can still render if the API is briefly unavailable.
+  let PRODUCTS = [
     {
       id: 1, name: "AeroBook Pro 14", brand: "Aero", category: "Laptops",
       price: 1499.00, rating: 4.8, emoji: "💻", stock: 12,
@@ -148,6 +152,14 @@
       .filter(e => e.product);
   }
 
+  // Load the catalog from the API, replacing the fallback data.
+  async function loadProducts() {
+    const res = await fetch(`${API_BASE}/products`);
+    if (!res.ok) throw new Error(`Failed to load products (HTTP ${res.status})`);
+    PRODUCTS = await res.json();
+    return PRODUCTS;
+  }
+
   // The single source of truth for order math (used by cart, checkout, summary).
   function computeTotals(cart) {
     const entries = cartEntries(cart);
@@ -162,8 +174,9 @@
   }
 
   global.VoltEdge = {
-    STORAGE_KEY, CONFIG, PRODUCTS,
-    money, esc, getProduct,
+    STORAGE_KEY, CONFIG,
+    get PRODUCTS() { return PRODUCTS; },
+    money, esc, getProduct, loadProducts,
     loadCart, saveCart, clearCart, cartEntries, computeTotals,
   };
 })(window);

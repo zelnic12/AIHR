@@ -1,6 +1,7 @@
 // ---- Checkout page logic ----
 const VE = window.VoltEdge;
 const $ = sel => document.querySelector(sel);
+const API_BASE = "/api";
 
 /* =========================================================================
  * Payment abstraction
@@ -197,25 +198,37 @@ async function handleSubmit(e) {
 
   const order = buildOrder(data, totals);
 
-  // Submit to the payment provider.
   const btn = $("#placeOrderBtn");
   const originalLabel = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = "Processing…";
 
   try {
+    // 1) Run the payment provider (demo gateway for now).
     const result = await activeProvider.pay(order);
     if (!result.success) throw new Error(result.error || "Payment failed.");
 
-    order.status = "paid";
-    order.transactionId = result.transactionId;
+    // 2) Persist the order via the backend API. The server validates stock and
+    //    recomputes the authoritative totals — its response is the source of truth.
+    const res = await fetch(`${API_BASE}/orders`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customer: order.customer, items: order.items }),
+    });
 
-    // Persist the last order (useful for a future orders/history view).
-    localStorage.setItem("voltedge_last_order", JSON.stringify(order));
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const detail = Array.isArray(body.details) ? body.details.join(" ") : "";
+      throw new Error([body.error, detail].filter(Boolean).join(": ") || "Could not place the order.");
+    }
 
-    // Payment succeeded — clear the cart and show confirmation.
+    // Use the server's confirmed order (id, amounts, status).
+    body.transactionId = result.transactionId;
+    localStorage.setItem("voltedge_last_order", JSON.stringify(body));
+
+    // Order placed — clear the cart and show confirmation.
     VE.clearCart();
-    showConfirmation(order);
+    showConfirmation(body);
   } catch (err) {
     $("#formError").textContent = err.message || "Something went wrong. Please try again.";
     $("#formError").hidden = false;
@@ -250,7 +263,14 @@ function showConfirmation(order) {
 /* =========================================================================
  * Init
  * ========================================================================= */
-function init() {
+async function init() {
+  // Refresh the catalog from the API so the summary reflects live prices/stock.
+  try {
+    await VE.loadProducts();
+  } catch (err) {
+    console.error("Could not refresh catalog from API; using cached data.", err);
+  }
+
   const totals = renderSummary();
   activeProvider.mount($("#paymentMount"), { totals });
   $("#checkoutForm").addEventListener("submit", handleSubmit);

@@ -114,11 +114,10 @@ router.post("/", async (req, res, next) => {
       status: "paid", // payment handled by the gateway integration (see frontend PaymentProvider)
     };
 
-    // Persist the order and decrement stock.
-    await store.createOrder(order);
-    await store.decrementStock(lineItems);
+    // Persist the order (customer upsert + items + stock decrement, atomically).
+    const saved = await store.createOrder(order);
 
-    res.status(201).json(order);
+    res.status(201).json(saved);
   } catch (err) { next(err); }
 });
 

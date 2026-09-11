@@ -155,6 +155,8 @@ img { max-width: 100%; display: block; }
 .add-btn:hover { background: var(--primary); border-color: var(--primary); color: #fff; }
 
 .empty-state { text-align: center; color: var(--muted); padding: 3rem 0; font-size: 1.05rem; }
+.grid-status { grid-column: 1 / -1; text-align: center; color: var(--muted); padding: 3rem 0; font-size: 1.05rem; }
+.grid-status.error { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
 
 /* Cart drawer */
 .cart-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 50; }

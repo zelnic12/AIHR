@@ -48,6 +48,20 @@ router.get("/:id", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// PATCH /api/orders/:id/status — update fulfilment status (admin)
+const ORDER_STATUSES = ["pending", "paid", "shipped", "cancelled"];
+router.patch("/:id/status", async (req, res, next) => {
+  try {
+    const { status } = req.body || {};
+    if (!ORDER_STATUSES.includes(status)) {
+      return res.status(400).json({ error: "Validation failed", details: [`status must be one of: ${ORDER_STATUSES.join(", ")}`] });
+    }
+    const updated = await store.updateOrderStatus(req.params.id, status);
+    if (!updated) return res.status(404).json({ error: "Order not found" });
+    res.json(updated);
+  } catch (err) { next(err); }
+});
+
 // POST /api/orders — place an order
 router.post("/", async (req, res, next) => {
   try {

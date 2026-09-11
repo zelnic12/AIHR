@@ -9,7 +9,9 @@
     "dev": "node --watch src/index.js",
     "migrate": "node src/db/migrate.js",
     "seed": "node src/db/seed.js",
-    "db:setup": "node src/db/migrate.js && node src/db/seed.js"
+    "seed:orders": "node src/db/seed-orders.js",
+    "db:setup": "node src/db/migrate.js && node src/db/seed.js",
+    "db:demo": "node src/db/migrate.js && node src/db/seed.js && node src/db/seed-orders.js"
   },
   "engines": {
     "node": ">=18"

@@ -193,3 +193,145 @@ export async function createOrder(order) {
     return order;
   });
 }
+
+
+// ---- Order status update ----
+export async function updateOrderStatus(id, status) {
+  const { rows } = await query(
+    "UPDATE orders SET status = $1 WHERE id = $2 RETURNING id",
+    [status, id]
+  );
+  if (rows.length === 0) return null;
+  return getOrder(id);
+}
+
+// ============================================================================
+// Analytics — aggregate queries for the admin dashboard.
+// All monetary values are coerced from NUMERIC strings to numbers.
+// ============================================================================
+
+// Headline KPIs: revenue, order count, AOV, customers, units sold, catalog size.
+export async function getSummary() {
+  const { rows } = await query(`
+    SELECT
+      COALESCE(SUM(o.total), 0)          AS revenue,
+      COUNT(DISTINCT o.id)               AS orders,
+      COALESCE(SUM(o.subtotal), 0)       AS subtotal,
+      COALESCE(SUM(o.tax), 0)            AS tax,
+      COALESCE(SUM(o.shipping), 0)       AS shipping,
+      COUNT(DISTINCT o.customer_id)      AS customers
+    FROM orders o
+  `);
+  const units = await query("SELECT COALESCE(SUM(quantity),0) AS units FROM order_items");
+  const products = await query("SELECT COUNT(*) AS n FROM products");
+  const r = rows[0];
+  const orders = Number(r.orders);
+  const revenue = Number(r.revenue);
+  return {
+    revenue,
+    orders,
+    subtotal: Number(r.subtotal),
+    tax: Number(r.tax),
+    shipping: Number(r.shipping),
+    customers: Number(r.customers),
+    unitsSold: Number(units.rows[0].units),
+    productCount: Number(products.rows[0].n),
+    avgOrderValue: orders > 0 ? +(revenue / orders).toFixed(2) : 0,
+  };
+}
+
+// Best-selling products by units sold (and revenue).
+export async function getBestSellers(limit = 5) {
+  const { rows } = await query(`
+    SELECT oi.product_id AS id,
+           oi.product_name AS name,
+           SUM(oi.quantity) AS units,
+           SUM(oi.quantity * oi.unit_price) AS revenue
+    FROM order_items oi
+    GROUP BY oi.product_id, oi.product_name
+    ORDER BY units DESC, revenue DESC
+    LIMIT $1
+  `, [limit]);
+  return rows.map(r => ({
+    id: r.id, name: r.name,
+    units: Number(r.units), revenue: Number(r.revenue),
+  }));
+}
+
+// Sales grouped by product category (joined via products; falls back to
+// 'Unknown' for items whose product was later deleted).
+export async function getSalesByCategory() {
+  const { rows } = await query(`
+    SELECT COALESCE(p.category, 'Unknown') AS label,
+           SUM(oi.quantity) AS units,
+           SUM(oi.quantity * oi.unit_price) AS revenue
+    FROM order_items oi
+    LEFT JOIN products p ON p.id = oi.product_id
+    GROUP BY COALESCE(p.category, 'Unknown')
+    ORDER BY revenue DESC
+  `);
+  return rows.map(r => ({ label: r.label, units: Number(r.units), revenue: Number(r.revenue) }));
+}
+
+// Sales grouped by product brand.
+export async function getSalesByBrand() {
+  const { rows } = await query(`
+    SELECT COALESCE(NULLIF(p.brand, ''), 'Unknown') AS label,
+           SUM(oi.quantity) AS units,
+           SUM(oi.quantity * oi.unit_price) AS revenue
+    FROM order_items oi
+    LEFT JOIN products p ON p.id = oi.product_id
+    GROUP BY COALESCE(NULLIF(p.brand, ''), 'Unknown')
+    ORDER BY revenue DESC
+  `);
+  return rows.map(r => ({ label: r.label, units: Number(r.units), revenue: Number(r.revenue) }));
+}
+
+// Revenue/orders time series, bucketed by day | week | month.
+// Returns a dense series (zero-filled gaps) for the last N buckets.
+export async function getSalesTimeSeries(bucket = "day", points = 30) {
+  const trunc = { day: "day", week: "week", month: "month" }[bucket] || "day";
+  const stepInterval = { day: "1 day", week: "1 week", month: "1 month" }[trunc];
+
+  // Generate a dense date spine then LEFT JOIN aggregated orders onto it.
+  const { rows } = await query(`
+    WITH spine AS (
+      SELECT generate_series(
+        date_trunc($1, now()) - ($2::int - 1) * $3::interval,
+        date_trunc($1, now()),
+        $3::interval
+      ) AS bucket
+    ),
+    agg AS (
+      SELECT date_trunc($1, created_at) AS bucket,
+             SUM(total) AS revenue,
+             COUNT(*)   AS orders
+      FROM orders
+      GROUP BY 1
+    )
+    SELECT s.bucket,
+           COALESCE(a.revenue, 0) AS revenue,
+           COALESCE(a.orders, 0)  AS orders
+    FROM spine s
+    LEFT JOIN agg a ON a.bucket = s.bucket
+    ORDER BY s.bucket
+  `, [trunc, points, stepInterval]);
+
+  return rows.map(r => ({
+    bucket: r.bucket instanceof Date ? r.bucket.toISOString() : r.bucket,
+    revenue: Number(r.revenue),
+    orders: Number(r.orders),
+  }));
+}
+
+// Products at or below a low-stock threshold (for stock management alerts).
+export async function getLowStock(threshold = 5) {
+  const { rows } = await query(
+    "SELECT id, name, brand, category, stock, price FROM products WHERE stock <= $1 ORDER BY stock ASC, name",
+    [threshold]
+  );
+  return rows.map(r => ({
+    id: r.id, name: r.name, brand: r.brand, category: r.category,
+    stock: r.stock, price: Number(r.price),
+  }));
+}

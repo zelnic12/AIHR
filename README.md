@@ -1,29 +1,58 @@
-# VoltEdge — Electronics Store
+# VoltEdge — Full-Stack Electronics Store
 
-A fast, self-contained retail electronics storefront built with plain HTML, CSS, and JavaScript — no build step and no dependencies.
+A retail electronics store with a customer storefront, a checkout flow, a
+Node.js + Express REST API, a PostgreSQL database, and an **admin dashboard**.
 
 ## Features
 
-- **Product catalog** — 18 products across Laptops, Phones, Audio, Gaming, Smart Home, Wearables, and Accessories, rendered dynamically.
-- **Live search** by product name or category.
-- **Category filters** and **sorting** (featured, price low→high, price high→low, top rated).
-- **Slide-out cart** with quantity controls, remove, live subtotal, and a demo checkout.
-- **Persistent cart** across reloads via `localStorage`.
-- **Fully responsive** dark-theme UI.
+### Storefront (customer)
+- **Product catalog** loaded from the API, with live search, category filters, and sorting.
+- **Product detail** view with specs, stock status, and quantity selector.
+- **Slide-out cart** with quantity controls, subtotal/shipping/total, and `localStorage` persistence.
+- **Checkout page** — customer + shipping form, order summary, server-validated order placement, and a confirmation screen. Payment is behind a swappable `PaymentProvider` interface.
+- Fully responsive dark-theme UI.
+
+### Admin dashboard (`/admin.html`)
+- **Overview** — KPI cards (revenue, orders, units, customers), a 30-day sales chart, best-sellers, revenue-by-category, and low-stock alerts.
+- **Product management** — add, edit, delete, and quick stock adjustments.
+- **Order management** — browse orders, view details, and update fulfilment status.
+- **Sales performance** — revenue/tax/shipping stats, best-selling products, revenue by category and brand, and a **daily / weekly / monthly** sales chart.
+- Built from small, reusable ES-module components (stat cards, data table, modal, charts) — no frontend framework or build step.
+
+### Backend
+- **REST API** for products (CRUD), orders (create/list/get/status), and analytics.
+- **PostgreSQL** schema: `products`, `product_images`, `customers`, `orders`, `order_items`.
+- Order totals are **always recomputed server-side**; stock is validated and decremented atomically.
 
 ## Project structure
 
-| File | Purpose |
-|------|---------|
-| `index.html` | Page structure: header, hero, catalog, cart drawer, footer |
-| `styles.css` | Styling and responsive layout |
-| `script.js` | Product data plus all interactivity |
+```
+├── index.html, script.js         # storefront
+├── checkout.html, checkout.js     # checkout flow
+├── cart-core.js                   # shared cart/catalog/totals helpers
+├── styles.css                     # shared theme
+├── admin.html                     # admin dashboard shell
+├── admin/
+│   ├── admin.js, admin.css        # dashboard app + styles
+│   ├── components/                # reusable: api, format, statCard, dataTable, charts, modal, toast
+│   └── views/                     # overview, products, orders, sales
+└── server/                        # Express API + PostgreSQL (see server/README.md)
+```
 
 ## Running locally
 
-No build required. Open `index.html` in any modern browser, or serve the folder:
+The frontend is served by the API server, so one process runs everything.
 
 ```bash
-python3 -m http.server 8000
-# then visit http://localhost:8000
+cd server
+npm install
+createdb voltedge
+npm run db:demo        # migrate + seed products + seed demo orders (for dashboard data)
+npm start              # http://localhost:3000
 ```
+
+Then open:
+- Storefront — <http://localhost:3000/>
+- Admin dashboard — <http://localhost:3000/admin.html>
+
+See [`server/README.md`](server/README.md) for the full API reference and database setup.

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin · VoltEdge</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="admin/admin.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+</head>
+<body class="admin-body">
+  <div class="admin-layout">
+    <!-- Sidebar -->
+    <aside class="admin-sidebar">
+      <a href="index.html" class="admin-brand">
+        <span class="brand-mark">⚡</span>
+        <span class="brand-name">Volt<span>Edge</span></span>
+      </a>
+      <nav class="admin-nav" id="adminNav">
+        <button class="admin-nav-item active" data-view="overview">📊 <span>Overview</span></button>
+        <button class="admin-nav-item" data-view="products">📦 <span>Products</span></button>
+        <button class="admin-nav-item" data-view="orders">🧾 <span>Orders</span></button>
+        <button class="admin-nav-item" data-view="sales">📈 <span>Sales performance</span></button>
+      </nav>
+      <a href="index.html" class="admin-back">← Back to store</a>
+    </aside>
+
+    <!-- Main content -->
+    <main class="admin-main">
+      <header class="admin-topbar">
+        <h1 id="viewTitle">Overview</h1>
+        <button class="btn btn-ghost btn-sm" id="refreshBtn">↻ Refresh</button>
+      </header>
+      <div id="viewRoot" class="admin-view"></div>
+    </main>
+  </div>
+
+  <!-- Modal host (reused by the product form + confirmations) -->
+  <div id="modalHost"></div>
+
+  <!-- Toast host -->
+  <div id="toastHost" class="toast-host"></div>
+
+  <script type="module" src="admin/admin.js"></script>
+</body>
+</html>

@@ -100,9 +100,12 @@ npm start                  # migrations also run automatically on boot
 
 | Method | Path | Description | Success |
 |--------|------|-------------|---------|
-| POST   | `/api/orders`     | Place an order | 201 |
-| GET    | `/api/orders`     | List all orders | 200 |
-| GET    | `/api/orders/:id` | Get one order | 200 / 404 |
+| POST   | `/api/orders`            | Place an order | 201 |
+| GET    | `/api/orders`            | List all orders | 200 |
+| GET    | `/api/orders/:id`        | Get one order | 200 / 404 |
+| PATCH  | `/api/orders/:id/status` | Update fulfilment status | 200 / 404 |
+
+`PATCH .../status` body: `{ "status": "pending" | "paid" | "shipped" | "cancelled" }`.
 
 **Order body:**
 
@@ -132,6 +135,23 @@ Server-side behaviour when placing an order:
   otherwise $9.99), 8% estimated tax, and total. Client-supplied amounts are
   never trusted.
 - Persists the order and **decrements stock**.
+
+### Analytics (admin dashboard)
+
+Read-only aggregate endpoints powering `/admin.html`.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/analytics/summary`           | Revenue, order count, AOV, units, customers |
+| GET | `/api/analytics/best-sellers?limit=` | Top products by units sold |
+| GET | `/api/analytics/sales-by-category` | Revenue/units grouped by category |
+| GET | `/api/analytics/sales-by-brand`    | Revenue/units grouped by brand |
+| GET | `/api/analytics/timeseries?bucket=day\|week\|month&points=` | Revenue/orders time series |
+| GET | `/api/analytics/low-stock?threshold=` | Products at/below a stock threshold |
+| GET | `/api/analytics/overview`          | Everything above in one call (dashboard landing) |
+
+> Seed demo orders for meaningful analytics with `npm run seed:orders`
+> (or `npm run db:demo` to migrate + seed products + seed orders in one go).
 
 ## Error responses
 

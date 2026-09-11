@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { initStore } from "./store.js";
 import productsRouter from "./routes/products.js";
 import ordersRouter from "./routes/orders.js";
+import analyticsRouter from "./routes/analytics.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -34,6 +35,7 @@ app.get("/api/health", (req, res) => res.json({ status: "ok", time: new Date().t
 // ---- API routes ----
 app.use("/api/products", productsRouter);
 app.use("/api/orders", ordersRouter);
+app.use("/api/analytics", analyticsRouter);
 
 // ---- Unknown API routes → 404 JSON (before static fallback) ----
 app.use("/api", (req, res) => {

@@ -34,6 +34,17 @@ const getProduct = id => PRODUCTS.find(p => p.id === Number(id));
 // Escape any dynamic text before injecting into innerHTML.
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+// Discount helper. Returns { original, sale, pct } only when a product carries
+// a valid sale (originalPrice/salePrice or price + compareAtPrice). Returns null
+// otherwise, so cards/detail render normally when there is no discount.
+function discountInfo(p) {
+  const original = Number(p.originalPrice ?? p.compareAtPrice);
+  const sale = Number(p.salePrice ?? p.price);
+  if (!original || !sale || original <= sale) return null;
+  const pct = Math.round((1 - sale / original) * 100);
+  return { original, sale, pct };
+}
+
 // ---- Render category filters ----
 function renderFilters() {
   const wrap = $("#categoryFilters");
@@ -79,15 +90,23 @@ function renderProducts() {
     const stockTag = out
       ? `<span class="stock-pill out">Out of stock</span>`
       : low ? `<span class="stock-pill low">Only ${p.stock} left</span>` : "";
+    const d = discountInfo(p);
+    const saleTag = d ? `<span class="sale-badge">${d.pct}% OFF</span>` : "";
+    const priceBlock = d
+      ? `<div class="card-prices">
+           <span class="card-price on-sale">${money(d.sale)}</span>
+           <span class="price-original">${money(d.original)}</span>
+         </div>`
+      : `<span class="card-price">${money(p.price)}</span>`;
     return `
     <article class="card ${out ? "is-out" : ""}" data-view="${p.id}" tabindex="0" role="button" aria-label="View details for ${esc(p.name)}">
-      <div class="card-media">${p.emoji}${stockTag}</div>
+      <div class="card-media">${p.emoji}${stockTag}${saleTag}</div>
       <div class="card-body">
-        <span class="card-cat">${esc(p.category)}</span>
+        <span class="card-cat">${esc(p.brand)} · ${esc(p.category)}</span>
         <span class="card-name">${esc(p.name)}</span>
         <span class="card-rating">★ ${p.rating.toFixed(1)}</span>
         <div class="card-bottom">
-          <span class="card-price">${money(p.price)}</span>
+          ${priceBlock}
           <button class="add-btn" data-add="${p.id}" ${out ? "disabled" : ""}>${out ? "Sold out" : "Add to cart"}</button>
         </div>
       </div>
@@ -133,7 +152,16 @@ function renderProductDetail(product) {
       <span class="detail-brand">${esc(product.brand)} · ${esc(product.category)}</span>
       <h2 id="detailTitle" class="detail-name">${esc(product.name)}</h2>
       <div class="detail-rating">★ ${product.rating.toFixed(1)}</div>
-      <div class="detail-price">${money(product.price)}</div>
+      ${(() => {
+        const d = discountInfo(product);
+        return d
+          ? `<div class="detail-prices">
+               <span class="detail-price on-sale">${money(d.sale)}</span>
+               <span class="detail-price-original">${money(d.original)}</span>
+               <span class="detail-price-off">${d.pct}% OFF</span>
+             </div>`
+          : `<div class="detail-prices"><span class="detail-price">${money(product.price)}</span></div>`;
+      })()}
       ${stockLine}
       <p class="detail-desc">${esc(product.description)}</p>
 
@@ -143,8 +171,11 @@ function renderProductDetail(product) {
           <span id="detailQtyVal">1</span>
           <button id="detailQtyInc" aria-label="Increase quantity" ${out ? "disabled" : ""}>+</button>
         </div>
-        <button id="detailAddBtn" class="btn btn-primary" ${out ? "disabled" : ""}>
+        <button id="detailAddBtn" class="btn btn-secondary" ${out ? "disabled" : ""}>
           ${out ? "Out of stock" : "Add to Cart"}
+        </button>
+        <button id="detailBuyBtn" class="btn btn-primary" ${out ? "disabled" : ""}>
+          Buy Now
         </button>
       </div>
 
@@ -173,6 +204,11 @@ function openProduct(id, updateHash = true) {
     $("#detailAddBtn").addEventListener("click", () => {
       addToCart(product.id, qty);
       closeProduct();
+    });
+    // Buy Now: add to cart and go straight to checkout (reuses existing flow).
+    $("#detailBuyBtn").addEventListener("click", () => {
+      addToCart(product.id, qty);
+      window.location.href = "checkout.html";
     });
   }
 

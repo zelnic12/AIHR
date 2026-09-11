@@ -11,6 +11,9 @@ if [ ! -f "$PGDATA/PG_VERSION" ]; then
   su postgres -c "/usr/bin/initdb -D $PGDATA -U postgres --auth=trust -E UTF8" >/dev/null
 fi
 
+# Ensure the log directory exists (pg_ctl -l fails if the parent dir is missing).
+su postgres -c "mkdir -p $PGDATA/log"
+
 if ! su postgres -c "/usr/bin/pg_ctl -D $PGDATA status" >/dev/null 2>&1; then
   su postgres -c "/usr/bin/pg_ctl -D $PGDATA -l $PGDATA/log/manual.log \
     -o '-p 5432 -k $SOCK -c listen_addresses=127.0.0.1' -w -t 30 start" >/dev/null

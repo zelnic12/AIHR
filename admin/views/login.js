@@ -7,7 +7,7 @@ export function renderLogin(host, onSuccess) {
   host.innerHTML = `
     <div class="login-screen">
       <form class="login-card" id="loginForm">
-        <div class="login-brand"><span class="brand-mark">⚡</span> <span class="brand-name">Volt<span>Edge</span></span></div>
+        <div class="login-brand"><span class="brand-mark">SE</span> <span class="brand-name">Sinar <span>Elektronik</span></span></div>
         <h1>Admin sign in</h1>
         <p class="login-sub">Sign in to manage products, orders and analytics.</p>
         <div class="form-field">

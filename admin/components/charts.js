@@ -61,7 +61,7 @@ export function lineChart(series, { labelFmt = b => b } = {}) {
         </defs>
         <path d="${areaPath}" fill="url(#revFill)" />
         <polyline points="${revPts}" fill="none" stroke="var(--primary)" stroke-width="2.5" stroke-linejoin="round" />
-        <polyline points="${ordPts}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4 3" stroke-linejoin="round" />
+        <polyline points="${ordPts}" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-dasharray="4 3" stroke-linejoin="round" />
         ${xLabels}
       </svg>
       <div class="chart-legend">
@@ -69,5 +69,5 @@ export function lineChart(series, { labelFmt = b => b } = {}) {
         <span class="legend-ord">Orders</span>
       </div>
     </div>
-    <style>.axis-label{fill:var(--muted);font-size:11px}</style>`;
+    <style>.axis-label{fill:var(--text-secondary);font-size:11px}</style>`;
 }

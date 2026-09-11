@@ -13,6 +13,7 @@ Node.js + Express REST API, a PostgreSQL database, and an **admin dashboard**.
 - Fully responsive dark-theme UI.
 
 ### Admin dashboard (`/admin.html`)
+- **Login-protected** — JWT auth gates the dashboard and admin API (demo login `admin` / `admin123`).
 - **Overview** — KPI cards (revenue, orders, units, customers), a 30-day sales chart, best-sellers, revenue-by-category, and low-stock alerts.
 - **Product management** — add, edit, delete, and quick stock adjustments.
 - **Order management** — browse orders, view details, and update fulfilment status.
@@ -53,6 +54,8 @@ npm start              # http://localhost:3000
 
 Then open:
 - Storefront — <http://localhost:3000/>
-- Admin dashboard — <http://localhost:3000/admin.html>
+- Admin dashboard — <http://localhost:3000/admin.html> (sign in with `admin` / `admin123`)
+
+> Set `JWT_SECRET` and `ADMIN_PASSWORD` before deploying — see [`server/README.md`](server/README.md#authentication-admin).
 
 See [`server/README.md`](server/README.md) for the full API reference and database setup.

@@ -5,6 +5,9 @@ import { renderOverview } from "./views/overview.js";
 import { renderProducts } from "./views/products.js";
 import { renderOrders } from "./views/orders.js";
 import { renderSales } from "./views/sales.js";
+import { renderLogin } from "./views/login.js";
+import { auth, api, setUnauthorizedHandler } from "./components/api.js";
+import { toast } from "./components/toast.js";
 
 const VIEWS = {
   overview: { title: "Overview", render: renderOverview },
@@ -34,6 +37,9 @@ async function show(view) {
   await cfg.render(root);
 }
 
+const layout = document.querySelector(".admin-layout");
+const loginHost = document.getElementById("loginHost");
+
 // Nav clicks
 nav.addEventListener("click", e => {
   const btn = e.target.closest(".admin-nav-item");
@@ -43,11 +49,49 @@ nav.addEventListener("click", e => {
 // Refresh re-renders the current view.
 document.getElementById("refreshBtn").addEventListener("click", () => show(current));
 
+// Logout
+document.getElementById("logoutBtn").addEventListener("click", () => {
+  auth.clear();
+  showLogin();
+});
+
 // Hash routing (initial + back/forward).
 window.addEventListener("hashchange", () => {
+  if (!auth.isAuthed()) return;
   const view = location.hash.replace("#", "") || "overview";
   if (view !== current) show(view);
 });
 
-// Init from hash.
-show(location.hash.replace("#", "") || "overview");
+// ---- Auth gating ----
+function showLogin() {
+  layout.hidden = true;
+  loginHost.hidden = false;
+  renderLogin(loginHost, enterDashboard);
+}
+
+function enterDashboard() {
+  loginHost.hidden = true;
+  loginHost.innerHTML = "";
+  layout.hidden = false;
+  show(location.hash.replace("#", "") || "overview");
+}
+
+// When any API call gets a 401, drop back to the login screen.
+setUnauthorizedHandler(() => {
+  toast("Session expired — please sign in again.", "error");
+  showLogin();
+});
+
+// ---- Bootstrap ----
+async function boot() {
+  if (!auth.isAuthed()) { showLogin(); return; }
+  // Validate the stored token before showing the dashboard.
+  try {
+    await api.me();
+    enterDashboard();
+  } catch {
+    showLogin();
+  }
+}
+
+boot();

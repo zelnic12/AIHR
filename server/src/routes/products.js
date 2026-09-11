@@ -1,6 +1,7 @@
 // ---- Products router: /api/products ----
 import { Router } from "express";
 import * as store from "../store.js";
+import { requireAuth } from "../auth.js";
 
 const router = Router();
 
@@ -57,8 +58,8 @@ router.get("/:id", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/products — create
-router.post("/", async (req, res, next) => {
+// POST /api/products — create (admin only)
+router.post("/", requireAuth, async (req, res, next) => {
   try {
     const errors = validateProduct(req.body, { partial: false });
     if (errors.length) return res.status(400).json({ error: "Validation failed", details: errors });
@@ -77,8 +78,8 @@ router.post("/", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// PUT /api/products/:id — update (partial allowed)
-router.put("/:id", async (req, res, next) => {
+// PUT /api/products/:id — update (partial allowed, admin only)
+router.put("/:id", requireAuth, async (req, res, next) => {
   try {
     const errors = validateProduct(req.body, { partial: true });
     if (errors.length) return res.status(400).json({ error: "Validation failed", details: errors });
@@ -89,8 +90,8 @@ router.put("/:id", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// DELETE /api/products/:id — remove
-router.delete("/:id", async (req, res, next) => {
+// DELETE /api/products/:id — remove (admin only)
+router.delete("/:id", requireAuth, async (req, res, next) => {
   try {
     const ok = await store.deleteProduct(req.params.id);
     if (!ok) return res.status(404).json({ error: "Product not found" });

@@ -8,6 +8,8 @@ import { initStore } from "./store.js";
 import productsRouter from "./routes/products.js";
 import ordersRouter from "./routes/orders.js";
 import analyticsRouter from "./routes/analytics.js";
+import authRouter from "./routes/auth.js";
+import { requireAuth } from "./auth.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -33,9 +35,11 @@ app.use((req, res, next) => {
 app.get("/api/health", (req, res) => res.json({ status: "ok", time: new Date().toISOString() }));
 
 // ---- API routes ----
+app.use("/api/auth", authRouter);
 app.use("/api/products", productsRouter);
 app.use("/api/orders", ordersRouter);
-app.use("/api/analytics", analyticsRouter);
+// Analytics are admin-only — protected at the mount point.
+app.use("/api/analytics", requireAuth, analyticsRouter);
 
 // ---- Unknown API routes → 404 JSON (before static fallback) ----
 app.use("/api", (req, res) => {

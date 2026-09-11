@@ -28,9 +28,30 @@ function mapProduct(row) {
   return product;
 }
 
-// On boot, ensure the schema exists. (Seeding is a separate explicit step.)
+// On boot, ensure the schema exists. (Product/order seeding is a separate
+// explicit step; the admin user is bootstrapped here so the system always has
+// a way in — see ensureAdmin below.)
 export async function initStore() {
   await migrate();
+  await ensureAdmin();
+}
+
+// Create a default admin account if none exists yet. Credentials come from env
+// (ADMIN_USERNAME / ADMIN_PASSWORD) with demo defaults.
+async function ensureAdmin() {
+  const { rows } = await query("SELECT COUNT(*)::int AS n FROM admin_users");
+  if (rows[0].n > 0) return;
+  const bcrypt = (await import("bcryptjs")).default;
+  const username = process.env.ADMIN_USERNAME || "admin";
+  const password = process.env.ADMIN_PASSWORD || "admin123";
+  const name = process.env.ADMIN_NAME || "Store Admin";
+  const hash = await bcrypt.hash(password, 10);
+  await query(
+    "INSERT INTO admin_users (username, password_hash, name) VALUES ($1,$2,$3) ON CONFLICT (username) DO NOTHING",
+    [username, hash, name]
+  );
+  console.log(`✓ Bootstrapped admin user "${username}"` +
+    (process.env.ADMIN_PASSWORD ? "" : ` (default password "${password}")`));
 }
 
 // ---- Products ----
@@ -334,4 +355,22 @@ export async function getLowStock(threshold = 5) {
     id: r.id, name: r.name, brand: r.brand, category: r.category,
     stock: r.stock, price: Number(r.price),
   }));
+}
+
+
+// ---- Admin users ----
+export async function getAdminByUsername(username) {
+  const { rows } = await query(
+    "SELECT id, username, password_hash, name, role FROM admin_users WHERE username = $1",
+    [username]
+  );
+  return rows[0] || null;
+}
+
+export async function getAdminById(id) {
+  const { rows } = await query(
+    "SELECT id, username, name, role FROM admin_users WHERE id = $1",
+    [Number(id)]
+  );
+  return rows[0] || null;
 }

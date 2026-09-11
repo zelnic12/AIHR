@@ -1,6 +1,7 @@
 // ---- Orders router: /api/orders ----
 import { Router } from "express";
 import * as store from "../store.js";
+import { requireAuth } from "../auth.js";
 
 const router = Router();
 
@@ -32,15 +33,15 @@ function generateOrderId() {
     Math.random().toString(36).slice(2, 6).toUpperCase();
 }
 
-// GET /api/orders — list all orders
-router.get("/", async (req, res, next) => {
+// GET /api/orders — list all orders (admin only; exposes customer PII)
+router.get("/", requireAuth, async (req, res, next) => {
   try {
     res.json(await store.getOrders());
   } catch (err) { next(err); }
 });
 
-// GET /api/orders/:id — one order
-router.get("/:id", async (req, res, next) => {
+// GET /api/orders/:id — one order (admin only; exposes customer PII)
+router.get("/:id", requireAuth, async (req, res, next) => {
   try {
     const order = await store.getOrder(req.params.id);
     if (!order) return res.status(404).json({ error: "Order not found" });
@@ -48,9 +49,9 @@ router.get("/:id", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// PATCH /api/orders/:id/status — update fulfilment status (admin)
+// PATCH /api/orders/:id/status — update fulfilment status (admin only)
 const ORDER_STATUSES = ["pending", "paid", "shipped", "cancelled"];
-router.patch("/:id/status", async (req, res, next) => {
+router.patch("/:id/status", requireAuth, async (req, res, next) => {
   try {
     const { status } = req.body || {};
     if (!ORDER_STATUSES.includes(status)) {

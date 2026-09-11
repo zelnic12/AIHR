@@ -136,9 +136,36 @@ Server-side behaviour when placing an order:
   never trusted.
 - Persists the order and **decrements stock**.
 
+### Authentication (admin)
+
+The admin API and dashboard are protected by JWT-based auth.
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| POST | `/api/auth/login` | Exchange `{ username, password }` for a JWT | public |
+| GET  | `/api/auth/me`    | Return the current admin (validates token) | Bearer token |
+
+Send the token as `Authorization: Bearer <token>` on protected requests.
+
+**Configuration (env):**
+
+- `JWT_SECRET` — token signing secret (**set this in production**; a dev fallback is used otherwise).
+- `JWT_TTL` — token lifetime (default `8h`).
+- `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_NAME` — seed/bootstrap credentials
+  (defaults `admin` / `admin123`). Set a real password before deploying.
+
+On boot the server **bootstraps a default admin** if none exists, so you always
+have a way in. Seed/reset explicitly with `npm run seed:admin`.
+
+**Route protection:**
+
+- **Public:** `GET /api/products`, `GET /api/products/:id`, `POST /api/orders` (checkout).
+- **Admin only (401 without a valid token):** product `POST`/`PUT`/`DELETE`,
+  `GET /api/orders`, `GET /api/orders/:id`, `PATCH /api/orders/:id/status`, and all `/api/analytics/*`.
+
 ### Analytics (admin dashboard)
 
-Read-only aggregate endpoints powering `/admin.html`.
+Read-only aggregate endpoints powering `/admin.html` (all require a Bearer token).
 
 | Method | Path | Description |
 |--------|------|-------------|

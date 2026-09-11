@@ -10,15 +10,18 @@
     "migrate": "node src/db/migrate.js",
     "seed": "node src/db/seed.js",
     "seed:orders": "node src/db/seed-orders.js",
-    "db:setup": "node src/db/migrate.js && node src/db/seed.js",
-    "db:demo": "node src/db/migrate.js && node src/db/seed.js && node src/db/seed-orders.js"
+    "seed:admin": "node src/db/seed-admin.js",
+    "db:setup": "node src/db/migrate.js && node src/db/seed.js && node src/db/seed-admin.js",
+    "db:demo": "node src/db/migrate.js && node src/db/seed.js && node src/db/seed-orders.js && node src/db/seed-admin.js"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
     "pg": "^8.13.1"
   }
 }

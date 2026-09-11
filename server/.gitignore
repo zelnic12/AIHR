@@ -1,0 +1,8 @@
+node_modules/
+npm-debug.log*
+.env
+
+# Runtime data (JSON store) and logs — regenerated on start.
+# Note: this is the runtime store at server/data, NOT server/src/data (seed source).
+/data/
+*.log

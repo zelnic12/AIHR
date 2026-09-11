@@ -421,12 +421,8 @@ document.addEventListener("keydown", e => {
 });
 $("#checkoutBtn").addEventListener("click", () => {
   if (cartEntries().length === 0) return;
-  state.cart = {};
-  saveCart();
-  renderCart();
-  const msg = $("#checkoutMsg");
-  msg.hidden = false;
-  setTimeout(() => { msg.hidden = true; }, 4000);
+  // Cart is persisted in localStorage; the checkout page reads it from there.
+  window.location.href = "checkout.html";
 });
 
 // Open a product directly from a #product/<id> URL (shareable / refresh-safe).

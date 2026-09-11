@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Checkout — VoltEdge</title>
+  <meta name="description" content="Complete your VoltEdge order." />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <!-- Header -->
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="index.html" class="brand" aria-label="VoltEdge home">
+        <span class="brand-mark">⚡</span>
+        <span class="brand-name">Volt<span>Edge</span></span>
+      </a>
+      <div class="checkout-steps" aria-hidden="true">
+        <span class="step done">Cart</span>
+        <span class="step-sep">›</span>
+        <span class="step active" id="stepInfo">Checkout</span>
+        <span class="step-sep">›</span>
+        <span class="step" id="stepDone">Confirmation</span>
+      </div>
+      <a href="index.html" class="cart-btn" aria-label="Continue shopping">← Continue shopping</a>
+    </div>
+  </header>
+
+  <main class="container checkout-page">
+    <!-- Checkout view (form + summary) -->
+    <div id="checkoutView">
+      <h1 class="checkout-title">Checkout</h1>
+
+      <!-- Empty-cart notice (shown when there is nothing to buy) -->
+      <div id="emptyCart" class="empty-checkout" hidden>
+        <p>Your cart is empty.</p>
+        <a href="index.html" class="btn btn-primary">Browse products</a>
+      </div>
+
+      <div id="checkoutGrid" class="checkout-grid">
+        <!-- Customer + shipping form -->
+        <form id="checkoutForm" class="checkout-form" novalidate>
+          <section class="form-section">
+            <h2>Contact details</h2>
+            <div class="field">
+              <label for="fName">Full name</label>
+              <input type="text" id="fName" name="name" autocomplete="name" required />
+              <span class="field-error" data-error-for="fName"></span>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label for="fEmail">Email</label>
+                <input type="email" id="fEmail" name="email" autocomplete="email" required />
+                <span class="field-error" data-error-for="fEmail"></span>
+              </div>
+              <div class="field">
+                <label for="fPhone">Phone number</label>
+                <input type="tel" id="fPhone" name="phone" autocomplete="tel" required />
+                <span class="field-error" data-error-for="fPhone"></span>
+              </div>
+            </div>
+          </section>
+
+          <section class="form-section">
+            <h2>Shipping address</h2>
+            <div class="field">
+              <label for="fAddress">Street address</label>
+              <input type="text" id="fAddress" name="address" autocomplete="address-line1" required />
+              <span class="field-error" data-error-for="fAddress"></span>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label for="fCity">City</label>
+                <input type="text" id="fCity" name="city" autocomplete="address-level2" required />
+                <span class="field-error" data-error-for="fCity"></span>
+              </div>
+              <div class="field">
+                <label for="fPostal">Postal / ZIP code</label>
+                <input type="text" id="fPostal" name="postal" autocomplete="postal-code" required />
+                <span class="field-error" data-error-for="fPostal"></span>
+              </div>
+            </div>
+            <div class="field">
+              <label for="fCountry">Country</label>
+              <input type="text" id="fCountry" name="country" autocomplete="country-name" required />
+              <span class="field-error" data-error-for="fCountry"></span>
+            </div>
+          </section>
+
+          <!-- Payment placeholder — a real gateway mounts here later -->
+          <section class="form-section" id="paymentSection">
+            <h2>Payment</h2>
+            <div id="paymentMount" class="payment-mount">
+              <!-- PaymentProvider renders its UI here -->
+            </div>
+          </section>
+
+          <p id="formError" class="form-error-banner" hidden></p>
+
+          <button type="submit" id="placeOrderBtn" class="btn btn-primary btn-block btn-lg">
+            Place order · <span id="payAmount">$0.00</span>
+          </button>
+        </form>
+
+        <!-- Order summary -->
+        <aside class="order-summary">
+          <h2>Order summary</h2>
+          <div id="summaryItems" class="summary-items"></div>
+          <div class="summary-totals">
+            <div class="summary-row"><span>Subtotal</span><span id="sumSubtotal">$0.00</span></div>
+            <div class="summary-row"><span id="sumShipLabel">Shipping</span><span id="sumShipping">$0.00</span></div>
+            <div class="summary-row"><span>Tax (est.)</span><span id="sumTax">$0.00</span></div>
+            <div class="summary-row grand"><span>Total</span><strong id="sumTotal">$0.00</strong></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <!-- Order confirmation screen -->
+    <div id="confirmationView" class="confirmation" hidden>
+      <div class="confirm-check">✓</div>
+      <h1>Thank you, <span id="confirmName">friend</span>!</h1>
+      <p class="confirm-sub">Your order has been placed successfully.</p>
+      <div class="confirm-card">
+        <div class="confirm-row"><span>Order number</span><strong id="confirmOrderId">—</strong></div>
+        <div class="confirm-row"><span>Amount paid</span><strong id="confirmTotal">—</strong></div>
+        <div class="confirm-row"><span>Confirmation sent to</span><strong id="confirmEmail">—</strong></div>
+        <div class="confirm-row"><span>Shipping to</span><strong id="confirmAddress">—</strong></div>
+      </div>
+      <p class="confirm-note">A demo confirmation — no payment was actually charged.</p>
+      <a href="index.html" class="btn btn-primary">Continue shopping</a>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <p class="footer-copy">© 2026 VoltEdge. Demo storefront.</p>
+  </footer>
+
+  <script src="cart-core.js"></script>
+  <script src="checkout.js"></script>
+</body>
+</html>

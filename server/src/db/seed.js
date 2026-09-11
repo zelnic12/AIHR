@@ -2,6 +2,8 @@
 // Loads the catalog into Postgres. Idempotent: clears product tables first,
 // then inserts products and a placeholder image per product. Orders/customers
 // are left untouched.
+import 'dotenv/config';
+import { pathToFileURL } from "node:url";
 import { pool, withTransaction } from "./pool.js";
 import { SEED_PRODUCTS } from "../data/seed-products.js";
 
@@ -36,7 +38,7 @@ export async function seed() {
   console.log(`✓ Seeded ${SEED_PRODUCTS.length} products (+ images)`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   seed()
     .then(() => pool.end())
     .then(() => process.exit(0))

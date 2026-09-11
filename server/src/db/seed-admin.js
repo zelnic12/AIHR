@@ -4,7 +4,9 @@
 //   ADMIN_USERNAME (default "admin")
 //   ADMIN_PASSWORD (default "admin123")
 //   ADMIN_NAME     (default "Store Admin")
+import 'dotenv/config';
 import bcrypt from "bcryptjs";
+import { pathToFileURL } from "node:url";
 import { pool } from "./pool.js";
 
 export async function seedAdmin() {
@@ -25,7 +27,7 @@ export async function seedAdmin() {
     (process.env.ADMIN_PASSWORD ? "" : ` (default password "${password}" — change via ADMIN_PASSWORD)`));
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   seedAdmin()
     .then(() => pool.end())
     .then(() => process.exit(0))

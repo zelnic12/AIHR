@@ -6,6 +6,8 @@
 // Idempotent-ish: clears existing orders/customers first, then inserts a fresh
 // randomized set. Does NOT change product stock (kept simple for demo data).
 
+import 'dotenv/config';
+import { pathToFileURL } from "node:url";
 import { pool, withTransaction } from "./pool.js";
 
 const CONFIG = { SHIPPING_FEE: 9.99, FREE_SHIPPING_THRESHOLD: 100, TAX_RATE: 0.08 };
@@ -90,7 +92,7 @@ export async function seedOrders(count = 120) {
   console.log(`✓ Seeded ${count} demo orders over the last 60 days`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const count = Number(process.argv[2]) || 120;
   seedOrders(count)
     .then(() => pool.end())

@@ -92,11 +92,21 @@
     </div>
     <div id="cartItems" class="cart-items"></div>
     <div class="cart-footer">
-      <div class="cart-total-row">
-        <span>Subtotal</span>
-        <strong id="cartTotal">$0.00</strong>
+      <div class="cart-summary">
+        <div class="summary-row">
+          <span>Subtotal</span>
+          <span id="cartSubtotal">$0.00</span>
+        </div>
+        <div class="summary-row">
+          <span id="shippingLabel">Shipping</span>
+          <span id="cartShipping">$0.00</span>
+        </div>
+        <div class="summary-row cart-total-row">
+          <span>Total</span>
+          <strong id="cartTotal">$0.00</strong>
+        </div>
       </div>
-      <button id="checkoutBtn" class="btn btn-primary btn-block">Checkout</button>
+      <button id="checkoutBtn" class="btn btn-primary btn-block" disabled>Checkout</button>
       <p id="checkoutMsg" class="checkout-msg" hidden>🎉 Thanks! This is a demo — no payment was taken.</p>
     </div>
   </aside>

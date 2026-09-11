@@ -112,6 +112,10 @@ const PRODUCTS = [
 
 const CATEGORIES = ["All", ...new Set(PRODUCTS.map(p => p.category))];
 
+// ---- Cart config ----
+const SHIPPING_FEE = 9.99;             // Flat shipping fee below the threshold.
+const FREE_SHIPPING_THRESHOLD = 100;   // Free shipping at/above this subtotal.
+
 // ---- State ----
 let state = {
   category: "All",
@@ -331,10 +335,26 @@ function cartEntries() {
 function renderCart() {
   const entries = cartEntries();
   const count = entries.reduce((s, e) => s + e.qty, 0);
-  const total = entries.reduce((s, e) => s + e.qty * e.product.price, 0);
+  const subtotal = entries.reduce((s, e) => s + e.qty * e.product.price, 0);
 
+  // Shipping: free over the threshold, otherwise a flat fee; nothing to ship if empty.
+  const shipping = subtotal === 0 ? 0 : (subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE);
+  const total = subtotal + shipping;
+
+  // Header count.
   $("#cartCount").textContent = count;
+
+  // Summary breakdown.
+  $("#cartSubtotal").textContent = money(subtotal);
+  $("#cartShipping").textContent = shipping === 0 ? "Free" : money(shipping);
   $("#cartTotal").textContent = money(total);
+  $("#shippingLabel").textContent =
+    subtotal > 0 && subtotal < FREE_SHIPPING_THRESHOLD
+      ? `Shipping (free over ${money(FREE_SHIPPING_THRESHOLD)})`
+      : "Shipping";
+
+  // Disable checkout on an empty cart.
+  $("#checkoutBtn").disabled = entries.length === 0;
 
   const container = $("#cartItems");
   if (entries.length === 0) {
@@ -342,7 +362,9 @@ function renderCart() {
     return;
   }
 
-  container.innerHTML = entries.map(({ product, qty }) => `
+  container.innerHTML = entries.map(({ product, qty }) => {
+    const atMax = qty >= product.stock;
+    return `
     <div class="cart-item">
       <div class="cart-item-media">${product.emoji}</div>
       <div>
@@ -351,13 +373,14 @@ function renderCart() {
         <div class="qty">
           <button data-dec="${product.id}" aria-label="Decrease quantity">−</button>
           <span>${qty}</span>
-          <button data-inc="${product.id}" aria-label="Increase quantity">+</button>
+          <button data-inc="${product.id}" aria-label="Increase quantity" ${atMax ? "disabled" : ""}>+</button>
           <button class="remove-btn" data-remove="${product.id}">Remove</button>
         </div>
+        ${atMax ? `<div class="qty-max-note">Max stock reached</div>` : ""}
       </div>
       <strong>${money(product.price * qty)}</strong>
-    </div>
-  `).join("");
+    </div>`;
+  }).join("");
 
   container.querySelectorAll("[data-inc]").forEach(b => b.addEventListener("click", () => changeQty(Number(b.dataset.inc), 1)));
   container.querySelectorAll("[data-dec]").forEach(b => b.addEventListener("click", () => changeQty(Number(b.dataset.dec), -1)));

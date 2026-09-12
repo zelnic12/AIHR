@@ -68,6 +68,36 @@ npm start                  # migrations also run automatically on boot
 > `scripts/pg-start.sh` (initialises and starts a local PG 15 cluster and
 > creates the `voltedge` database).
 
+## Payments (Midtrans Snap — QRIS)
+
+Checkout uses the official [`midtrans-client`](https://www.npmjs.com/package/midtrans-client)
+Snap API. When an order is placed, the server creates a Snap transaction using
+the order's id as `order_id` and the **server-computed total** as `gross_amount`,
+and returns a `snapToken` + `redirectUrl` the frontend can use to open the
+Midtrans payment popup. Only **QRIS** channels are enabled.
+
+Configure via environment (see `.env.example`; never hardcode keys):
+
+```bash
+MIDTRANS_SERVER_KEY=      # from Midtrans dashboard → Access Keys
+MIDTRANS_CLIENT_KEY=      # publishable key (sent to the browser for the popup)
+MIDTRANS_IS_PRODUCTION=false   # default sandbox; set true ONLY in production
+# optional — override enabled channels (default QRIS-only):
+# MIDTRANS_ENABLED_PAYMENTS=gopay,other_qris
+```
+
+Behaviour:
+
+- **No `MIDTRANS_SERVER_KEY`** → gateway is disabled. Orders are still placed
+  (with `payment_status = 'unconfigured'`, no token) so local dev/demos work
+  without live credentials.
+- **`MIDTRANS_IS_PRODUCTION` defaults to `false`** (sandbox), so local dev never
+  accidentally hits production.
+- Gateway errors during checkout are **non-fatal**: the order (with reserved
+  stock and fixed totals) is preserved; the client can retry payment.
+- The Snap token + status are stored on the order (`payment_token`,
+  `payment_redirect_url`, `payment_status`).
+
 ## API reference
 
 ### Products

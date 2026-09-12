@@ -3,6 +3,7 @@ import { Router } from "express";
 import crypto from "node:crypto";
 import * as store from "../store.js";
 import { requireAuth } from "../auth.js";
+import { createSnapTransaction, getClientConfig, isPaymentEnabled } from "../payment/midtrans.js";
 
 const router = Router();
 
@@ -150,9 +151,42 @@ router.post("/", async (req, res, next) => {
     };
 
     // Persist the order (customer upsert + items + stock decrement, atomically).
-    const saved = await store.createOrder(order);
+    let saved = await store.createOrder(order);
 
-    res.status(201).json(saved);
+    // Create the Midtrans Snap transaction AFTER the order is persisted, using
+    // the order's own id as order_id and the SERVER-computed total as
+    // gross_amount. The frontend uses the returned token to open the QRIS popup.
+    //
+    // Gateway errors are non-fatal: the order is already valid (stock reserved,
+    // totals fixed). We record the payment state and let the client retry
+    // payment rather than losing the order.
+    let snap = null;
+    if (isPaymentEnabled()) {
+      try {
+        snap = await createSnapTransaction(saved);
+        saved = await store.setOrderPayment(saved.id, {
+          token: snap?.token ?? null,
+          redirectUrl: snap?.redirectUrl ?? null,
+          status: "pending",
+        });
+      } catch (payErr) {
+        console.error(`Midtrans Snap creation failed for order ${saved.id}:`, payErr?.message || payErr);
+        // Leave the order in place; surface a soft warning to the client.
+        saved.paymentError = "Payment could not be initialised. You can retry payment.";
+      }
+    } else {
+      // No gateway configured — mark the payment state so it's explicit.
+      saved = await store.setOrderPayment(saved.id, { status: "unconfigured" });
+    }
+
+    res.status(201).json({
+      ...saved,
+      // Payment info for the frontend Snap popup.
+      snapToken: snap?.token ?? null,
+      redirectUrl: snap?.redirectUrl ?? null,
+      midtransClientKey: getClientConfig().clientKey || null,
+      midtransProduction: getClientConfig().isProduction,
+    });
   } catch (err) { next(err); }
 });
 

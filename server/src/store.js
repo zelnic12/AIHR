@@ -164,7 +164,20 @@ function mapOrder(orderRow, itemRows) {
     status: orderRow.status,
     invoiceNo: orderRow.invoice_no ?? null,
     accessToken: orderRow.access_token ?? null,
+    paymentStatus: orderRow.payment_status ?? "pending",
+    paymentToken: orderRow.payment_token ?? null,
+    paymentRedirectUrl: orderRow.payment_redirect_url ?? null,
   };
+}
+
+// Persist the Midtrans payment details returned after creating a Snap
+// transaction. Returns the refreshed order.
+export async function setOrderPayment(id, { token = null, redirectUrl = null, status } = {}) {
+  const sets = ["payment_token = $2", "payment_redirect_url = $3"];
+  const values = [id, token, redirectUrl];
+  if (status) { sets.push(`payment_status = $${values.length + 1}`); values.push(status); }
+  await query(`UPDATE orders SET ${sets.join(", ")} WHERE id = $1`, values);
+  return getOrder(id);
 }
 
 export async function getOrders() {

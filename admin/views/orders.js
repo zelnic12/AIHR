@@ -1,7 +1,6 @@
 // Orders view: list all orders, view details, update fulfilment status.
 import { api } from "../components/api.js";
 import { money, fmtDate, esc } from "../components/format.js";
-import { dataTable } from "../components/dataTable.js";
 import { openModal } from "../components/modal.js";
 import { toast } from "../components/toast.js";
 
@@ -112,6 +111,54 @@ function orderDetail(root, order) {
   });
 }
 
+// Kanban board columns, in pipeline order. Cancelled is kept separate so it
+// doesn't mix with the active pipeline.
+const BOARD_COLUMNS = [
+  { status: "needs_shipping", title: "Needs Shipping" },
+  { status: "shipped", title: "Shipped" },
+  { status: "completed", title: "Order Completed" },
+  { status: "cancelled", title: "Cancelled" },
+];
+
+// The primary "advance" action available on a card for a given status.
+// null = no forward action (terminal state).
+const NEXT_ACTION = {
+  needs_shipping: { to: "shipped", label: "Mark as Shipped" },
+  shipped: { to: "completed", label: "Mark Completed" },
+  completed: null,
+  cancelled: null,
+};
+
+// Normalize any legacy status onto a board column so no order is ever missing.
+function boardStatus(status) {
+  if (status === "pending" || status === "paid") return "needs_shipping";
+  return ["needs_shipping", "shipped", "completed", "cancelled"].includes(status) ? status : "needs_shipping";
+}
+
+function orderCard(o) {
+  const itemCount = o.items.reduce((s, i) => s + i.qty, 0);
+  const bs = boardStatus(o.status);
+  const next = NEXT_ACTION[bs];
+  const canCancel = bs === "needs_shipping" || bs === "shipped";
+  return `
+    <article class="order-card" data-card="${esc(o.id)}" tabindex="0" role="button" aria-label="Open order ${esc(o.id)}">
+      <div class="order-card-top">
+        <span class="order-card-id">${esc(o.id)}</span>
+        <span class="order-card-total">${money(o.amounts.total)}</span>
+      </div>
+      <div class="order-card-customer">${esc(o.customer?.name || "—")}</div>
+      <div class="order-card-meta">
+        <span>${fmtDate(o.createdAt)}</span>
+        <span>·</span>
+        <span>${itemCount} item${itemCount === 1 ? "" : "s"}</span>
+      </div>
+      ${(next || canCancel) ? `<div class="order-card-actions">
+        ${next ? `<button class="btn btn-primary btn-xs" data-move="${esc(o.id)}" data-to="${next.to}">${next.label}</button>` : ""}
+        ${canCancel ? `<button class="icon-action danger btn-xs" data-move="${esc(o.id)}" data-to="cancelled">Cancel</button>` : ""}
+      </div>` : ""}
+    </article>`;
+}
+
 export async function renderOrders(root) {
   root.innerHTML = `<p class="admin-status">Loading orders…</p>`;
   let orders;
@@ -122,39 +169,58 @@ export async function renderOrders(root) {
     return;
   }
 
-  const table = dataTable({
-    columns: [
-      { key: "id", label: "Order", render: r => `<span style="font-family:monospace;font-size:.82rem">${esc(r.id)}</span>` },
-      { key: "customer", label: "Customer", render: r => esc(r.customer?.name || "—") },
-      { key: "date", label: "Date", render: r => fmtDate(r.createdAt) },
-      { key: "items", label: "Items", num: true, render: r => r.items.reduce((s, i) => s + i.qty, 0) },
-      { key: "total", label: "Total", num: true, render: r => money(r.amounts.total) },
-      { key: "status", label: "Status", render: r => statusBadge(r.status) },
-      { key: "actions", label: "", render: r => `
-        <div class="row-actions">
-          <button class="icon-action" data-view="${esc(r.id)}">View</button>
-          <button class="icon-action" data-invoice="${esc(r.id)}">Invoice</button>
-          <button class="icon-action" data-download="${esc(r.id)}">PDF</button>
-        </div>` },
-    ],
-    rows: orders,
-    empty: "No orders yet.",
-  });
+  // Group orders by (normalized) board status.
+  const byStatus = Object.fromEntries(BOARD_COLUMNS.map(c => [c.status, []]));
+  for (const o of orders) byStatus[boardStatus(o.status)].push(o);
+
+  const columnsHtml = BOARD_COLUMNS.map(col => {
+    const list = byStatus[col.status];
+    return `
+      <section class="board-col" data-col="${col.status}">
+        <header class="board-col-head status-${col.status}">
+          <span class="board-col-title">${esc(col.title)}</span>
+          <span class="board-col-count">${list.length}</span>
+        </header>
+        <div class="board-col-body">
+          ${list.length ? list.map(orderCard).join("") : `<p class="board-empty">No orders</p>`}
+        </div>
+      </section>`;
+  }).join("");
 
   root.innerHTML = `
-    <div class="panel">
-      <div class="panel-head"><h2>Orders (${orders.length})</h2></div>
-      ${table}
-    </div>`;
+    <div class="orders-head">
+      <h2>Orders (${orders.length})</h2>
+      <span class="orders-head-hint">Needs Shipping → Shipped → Order Completed</span>
+    </div>
+    <div class="orders-board">${columnsHtml}</div>`;
 
   const byId = new Map(orders.map(o => [o.id, o]));
-  root.querySelectorAll("[data-view]").forEach(btn => {
-    btn.addEventListener("click", () => orderDetail(root, byId.get(btn.dataset.view)));
+
+  // Click a card (but not its action buttons) → open the existing detail modal.
+  root.querySelectorAll("[data-card]").forEach(card => {
+    const open = () => orderDetail(root, byId.get(card.dataset.card));
+    card.addEventListener("click", e => {
+      if (e.target.closest("[data-move]")) return; // let the button handler run
+      open();
+    });
+    card.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
+    });
   });
-  root.querySelectorAll("[data-invoice]").forEach(btn => {
-    btn.addEventListener("click", () => openInvoicePdf(btn.dataset.invoice, false));
-  });
-  root.querySelectorAll("[data-download]").forEach(btn => {
-    btn.addEventListener("click", () => openInvoicePdf(btn.dataset.download, true));
+
+  // Move buttons → update status, then re-render the board.
+  root.querySelectorAll("[data-move]").forEach(btn => {
+    btn.addEventListener("click", async e => {
+      e.stopPropagation();
+      btn.disabled = true;
+      try {
+        await api.updateOrderStatus(btn.dataset.move, btn.dataset.to);
+        toast("Order moved", "success");
+        renderOrders(root);
+      } catch (err) {
+        btn.disabled = false;
+        toast(err.message, "error");
+      }
+    });
   });
 }

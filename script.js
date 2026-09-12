@@ -34,15 +34,39 @@ const getProduct = id => PRODUCTS.find(p => p.id === Number(id));
 // Escape any dynamic text before injecting into innerHTML.
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-// Discount helper. Returns { original, sale, pct } only when a product carries
-// a valid sale (originalPrice/salePrice or price + compareAtPrice). Returns null
-// otherwise, so cards/detail render normally when there is no discount.
+// Discount helper. Returns { original, sale, pct } when a product is on sale,
+// else null (so cards/detail render normally). Uses the API's promo fields
+// (salePrice/onSale/discountPercent) with a legacy fallback.
 function discountInfo(p) {
-  const original = Number(p.originalPrice ?? p.compareAtPrice);
-  const sale = Number(p.salePrice ?? p.price);
-  if (!original || !sale || original <= sale) return null;
-  const pct = Math.round((1 - sale / original) * 100);
+  const original = Number(p.price);
+  const sale = p.salePrice != null ? Number(p.salePrice) : Number(p.originalPrice != null ? p.price : NaN);
+  const active = (p.onSale === true) || (Number.isFinite(sale) && sale >= 0 && sale < original);
+  if (!active || !original || !Number.isFinite(sale) || sale >= original) return null;
+  const pct = p.discountPercent || Math.round((1 - sale / original) * 100);
   return { original, sale, pct };
+}
+
+// Resolve a product's primary image to a renderable HTML fragment. Uploaded
+// images use a real URL; the seed placeholders use an "emoji:<char>" scheme.
+function imageMarkup(url, emoji, cls = "") {
+  if (typeof url === "string" && url && !url.startsWith("emoji:")) {
+    return `<img class="${cls}" src="${esc(url)}" alt="" loading="lazy" />`;
+  }
+  const glyph = (typeof url === "string" && url.startsWith("emoji:")) ? url.slice(6) : emoji;
+  return `<span class="media-emoji ${cls}">${glyph || emoji}</span>`;
+}
+
+// The first image (lowest position) is primary; falls back to the emoji.
+function primaryImage(p) {
+  return (p.images && p.images.length) ? p.images[0].url : `emoji:${p.emoji}`;
+}
+
+// Effective (charged) price — promotional price when on sale, else regular.
+// Mirrors the server's authoritative rule; used for cart display math only.
+function priceOf(p) {
+  if (p.effectivePrice != null) return Number(p.effectivePrice);
+  const d = discountInfo(p);
+  return d ? d.sale : Number(p.price);
 }
 
 // ---- Render category filters ----
@@ -100,7 +124,7 @@ function renderProducts() {
       : `<span class="card-price">${money(p.price)}</span>`;
     return `
     <article class="card ${out ? "is-out" : ""}" data-view="${p.id}" tabindex="0" role="button" aria-label="View details for ${esc(p.name)}">
-      <div class="card-media">${p.emoji}${stockTag}${saleTag}</div>
+      <div class="card-media">${imageMarkup(primaryImage(p), p.emoji)}${stockTag}${saleTag}</div>
       <div class="card-body">
         <span class="card-cat">${esc(p.brand)} · ${esc(p.category)}</span>
         <span class="card-name">${esc(p.name)}</span>
@@ -144,9 +168,25 @@ function renderProductDetail(product) {
     .map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`)
     .join("");
 
+  // Image gallery. If a product has multiple images, show a thumbnail strip
+  // that swaps the main image on click. With ≤1 image, no gallery is shown.
+  const imgs = (product.images && product.images.length) ? product.images : [{ url: `emoji:${product.emoji}` }];
+  const mainUrl = imgs[0].url;
+  const gallery = imgs.length > 1
+    ? `<div class="detail-thumbs" role="listbox" aria-label="Product images">
+         ${imgs.map((im, i) => `
+           <button type="button" class="detail-thumb ${i === 0 ? "active" : ""}" data-thumb-url="${esc(im.url)}" aria-label="Image ${i + 1}">
+             ${imageMarkup(im.url, product.emoji)}
+           </button>`).join("")}
+       </div>`
+    : "";
+
   return `
-    <div class="detail-media">
-      <div class="detail-emoji">${product.emoji}</div>
+    <div class="detail-gallery">
+      <div class="detail-media" id="detailMainImage">
+        ${imageMarkup(mainUrl, product.emoji, "detail-main-img")}
+      </div>
+      ${gallery}
     </div>
     <div class="detail-info">
       <span class="detail-brand">${esc(product.brand)} · ${esc(product.category)}</span>
@@ -192,6 +232,16 @@ function openProduct(id, updateHash = true) {
 
   const body = $("#detailBody");
   body.innerHTML = renderProductDetail(product);
+
+  // Thumbnail gallery: clicking a thumb swaps the main image.
+  const mainImageEl = $("#detailMainImage");
+  body.querySelectorAll("[data-thumb-url]").forEach(thumb => {
+    thumb.addEventListener("click", () => {
+      mainImageEl.innerHTML = imageMarkup(thumb.dataset.thumbUrl, product.emoji, "detail-main-img");
+      body.querySelectorAll(".detail-thumb").forEach(t => t.classList.remove("active"));
+      thumb.classList.add("active");
+    });
+  });
 
   // Quantity selector (bounded by available stock, min 1).
   let qty = 1;
@@ -273,7 +323,7 @@ function cartEntries() {
 function renderCart() {
   const entries = cartEntries();
   const count = entries.reduce((s, e) => s + e.qty, 0);
-  const subtotal = entries.reduce((s, e) => s + e.qty * e.product.price, 0);
+  const subtotal = entries.reduce((s, e) => s + e.qty * priceOf(e.product), 0);
 
   // Shipping: free over the threshold, otherwise a flat fee; nothing to ship if empty.
   const shipping = subtotal === 0 ? 0 : (subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE);
@@ -302,12 +352,17 @@ function renderCart() {
 
   container.innerHTML = entries.map(({ product, qty }) => {
     const atMax = qty >= product.stock;
+    const unit = priceOf(product);
+    const d = discountInfo(product);
+    const priceLine = d
+      ? `<span class="cart-item-sale">${money(unit)}</span> <span class="cart-item-was">${money(product.price)}</span>`
+      : `${money(unit)}`;
     return `
     <div class="cart-item">
-      <div class="cart-item-media">${product.emoji}</div>
+      <div class="cart-item-media">${imageMarkup(primaryImage(product), product.emoji)}</div>
       <div>
         <div class="cart-item-name">${esc(product.name)}</div>
-        <div class="cart-item-price">${money(product.price)}</div>
+        <div class="cart-item-price">${priceLine}</div>
         <div class="qty">
           <button data-dec="${product.id}" aria-label="Decrease quantity">−</button>
           <span>${qty}</span>
@@ -316,7 +371,7 @@ function renderCart() {
         </div>
         ${atMax ? `<div class="qty-max-note">Max stock reached</div>` : ""}
       </div>
-      <strong>${money(product.price * qty)}</strong>
+      <strong>${money(unit * qty)}</strong>
     </div>`;
   }).join("");
 

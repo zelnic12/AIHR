@@ -160,10 +160,22 @@
     return PRODUCTS;
   }
 
+  // The effective (charged) price for a product — the promotional price when a
+  // valid sale is active, else the regular price. Mirrors the server's
+  // authoritative rule (the backend still recomputes totals on checkout).
+  function priceOf(product) {
+    const price = Number(product.price);
+    const sale = product.salePrice == null ? null : Number(product.salePrice);
+    if (product.effectivePrice != null) return Number(product.effectivePrice);
+    return sale != null && sale >= 0 && sale < price ? sale : price;
+  }
+
   // The single source of truth for order math (used by cart, checkout, summary).
+  // Note: this is for DISPLAY only — the server independently recomputes totals
+  // from DB prices when the order is placed.
   function computeTotals(cart) {
     const entries = cartEntries(cart);
-    const subtotal = entries.reduce((s, e) => s + e.qty * e.product.price, 0);
+    const subtotal = entries.reduce((s, e) => s + e.qty * priceOf(e.product), 0);
     const shipping = subtotal === 0
       ? 0
       : (subtotal >= CONFIG.FREE_SHIPPING_THRESHOLD ? 0 : CONFIG.SHIPPING_FEE);
@@ -176,7 +188,7 @@
   global.VoltEdge = {
     STORAGE_KEY, CONFIG,
     get PRODUCTS() { return PRODUCTS; },
-    money, esc, getProduct, loadProducts,
+    money, esc, getProduct, loadProducts, priceOf,
     loadCart, saveCart, clearCart, cartEntries, computeTotals,
   };
 })(window);

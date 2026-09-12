@@ -10,12 +10,17 @@ import productsRouter from "./routes/products.js";
 import ordersRouter from "./routes/orders.js";
 import analyticsRouter from "./routes/analytics.js";
 import authRouter from "./routes/auth.js";
+import imagesRouter from "./routes/images.js";
+import invoicesRouter from "./routes/invoices.js";
+import storeSettingsRouter from "./routes/store-settings.js";
 import { requireAuth } from "./auth.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 // The static frontend lives one level up from server/.
 const FRONTEND_DIR = path.join(__dirname, "..", "..");
+// Uploaded product images live under server/uploads and are served at /uploads.
+const UPLOADS_DIR = path.join(__dirname, "..", "uploads");
 
 const app = express();
 
@@ -39,6 +44,11 @@ app.get("/api/health", (req, res) => res.json({ status: "ok", time: new Date().t
 app.use("/api/auth", authRouter);
 app.use("/api/products", productsRouter);
 app.use("/api/orders", ordersRouter);
+app.use("/api/store-settings", storeSettingsRouter);
+// Admin image management (upload/delete/set-main/reorder). Auth enforced inside.
+app.use("/api/admin/products", imagesRouter);
+// Order invoices (JSON + PDF). Access control (admin JWT or per-order token) inside.
+app.use("/api/orders", invoicesRouter);
 // Analytics are admin-only — protected at the mount point.
 app.use("/api/analytics", requireAuth, analyticsRouter);
 
@@ -46,6 +56,9 @@ app.use("/api/analytics", requireAuth, analyticsRouter);
 app.use("/api", (req, res) => {
   res.status(404).json({ error: "Not found" });
 });
+
+// ---- Serve uploaded product images ----
+app.use("/uploads", express.static(UPLOADS_DIR));
 
 // ---- Serve the static frontend ----
 app.use(express.static(FRONTEND_DIR));

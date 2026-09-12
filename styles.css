@@ -452,3 +452,31 @@ img { max-width: 100%; display: block; }
 @media (max-width: 480px) {
   .field-row { grid-template-columns: 1fr; }
 }
+
+
+/* ---- Product images (storefront) ---- */
+.card-media img { width: 100%; height: 100%; object-fit: cover; }
+.card-media .media-emoji { font-size: 3.4rem; }
+.cart-item-media img { width: 100%; height: 100%; object-fit: cover; border-radius: var(--radius-sm); }
+.cart-item-media .media-emoji { font-size: 1.8rem; }
+
+/* Cart line item sale price */
+.cart-item-sale { color: var(--primary); font-weight: 700; }
+.cart-item-was { color: var(--text-secondary); text-decoration: line-through; font-size: .8rem; margin-left: .25rem; }
+
+/* ---- Detail image gallery ---- */
+.detail-gallery { display: flex; flex-direction: column; gap: .8rem; }
+.detail-media .detail-main-img { width: 100%; height: 100%; object-fit: contain; }
+.detail-thumbs { display: flex; gap: .55rem; flex-wrap: wrap; }
+.detail-thumb {
+  width: 64px; height: 64px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface-secondary); overflow: hidden; cursor: pointer; padding: 0;
+  display: grid; place-items: center; transition: border-color .15s ease;
+}
+.detail-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.detail-thumb .media-emoji { font-size: 1.6rem; }
+.detail-thumb:hover { border-color: var(--primary); }
+.detail-thumb.active { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-light); }
+
+/* Checkout confirmation invoice actions */
+.confirm-actions { display: flex; gap: .7rem; justify-content: center; margin-bottom: 1rem; flex-wrap: wrap; }

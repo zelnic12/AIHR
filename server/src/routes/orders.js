@@ -1,5 +1,6 @@
 // ---- Orders router: /api/orders ----
 import { Router } from "express";
+import crypto from "node:crypto";
 import * as store from "../store.js";
 import { requireAuth } from "../auth.js";
 
@@ -99,15 +100,27 @@ router.post("/", async (req, res, next) => {
         stockErrors.push(`Insufficient stock for "${product.name}" (requested ${qty}, available ${product.stock})`);
         continue;
       }
-      lineItems.push({ id: product.id, name: product.name, price: product.price, qty });
+      // AUTHORITATIVE pricing: the charged price is the product's effective
+      // (promotional) price from the DB — the client-supplied price is ignored.
+      const regularPrice = product.price;
+      const chargedPrice = store.effectivePrice(product);
+      lineItems.push({
+        id: product.id,
+        name: product.name,
+        price: chargedPrice,       // what the customer pays (sale price if on promo)
+        regularPrice,              // list price snapshot (for invoice discount line)
+        qty,
+      });
     }
 
     if (stockErrors.length) {
       return res.status(409).json({ error: "Order could not be placed", details: stockErrors });
     }
 
-    // Compute authoritative totals server-side.
+    // Compute authoritative totals server-side from the effective prices.
     const subtotal = round2(lineItems.reduce((s, li) => s + li.price * li.qty, 0));
+    // Discount = total savings vs. regular price (informational; already reflected in subtotal).
+    const discount = round2(lineItems.reduce((s, li) => s + (li.regularPrice - li.price) * li.qty, 0));
     const shipping = subtotal === 0 ? 0 : (subtotal >= CONFIG.FREE_SHIPPING_THRESHOLD ? 0 : CONFIG.SHIPPING_FEE);
     const tax = round2(subtotal * CONFIG.TAX_RATE);
     const total = round2(subtotal + shipping + tax);
@@ -115,6 +128,10 @@ router.post("/", async (req, res, next) => {
     const order = {
       id: generateOrderId(),
       createdAt: new Date().toISOString(),
+      // Server-generated, unique invoice number + per-order access token so the
+      // (unauthenticated) customer can view only their own invoice.
+      invoiceNo: await store.nextInvoiceNumber(),
+      accessToken: crypto.randomBytes(24).toString("hex"),
       customer: {
         name: customer.name.trim(),
         email: customer.email.trim(),
@@ -125,7 +142,7 @@ router.post("/", async (req, res, next) => {
         country: customer.country.trim(),
       },
       items: lineItems,
-      amounts: { subtotal, shipping, tax, total },
+      amounts: { subtotal, discount, shipping, tax, total },
       status: "paid", // payment handled by the gateway integration (see frontend PaymentProvider)
     };
 

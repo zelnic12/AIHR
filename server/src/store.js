@@ -10,12 +10,20 @@ import { migrate } from "./db/migrate.js";
 // NUMERIC columns come back as strings from pg — coerce to numbers.
 function mapProduct(row) {
   if (!row) return null;
+  const price = Number(row.price);
+  // sale_price is optional; a sale is only "active" when 0 <= sale < price.
+  const salePrice = row.sale_price == null ? null : Number(row.sale_price);
+  const onSale = salePrice != null && salePrice >= 0 && salePrice < price;
   const product = {
     id: row.id,
     name: row.name,
     brand: row.brand,
     category: row.category,
-    price: Number(row.price),
+    price,
+    salePrice,                                   // null when no promo set
+    onSale,                                       // convenience flag
+    effectivePrice: onSale ? salePrice : price,   // what the customer actually pays
+    discountPercent: onSale ? Math.round((1 - salePrice / price) * 100) : 0,
     rating: Number(row.rating),
     emoji: row.emoji,
     stock: row.stock,
@@ -23,9 +31,17 @@ function mapProduct(row) {
     specs: row.specs || {},
   };
   if (row.images) {
-    product.images = row.images.map(img => ({ url: img.url, alt: img.alt }));
+    product.images = row.images.map(img => ({ id: img.id, url: img.url, alt: img.alt }));
   }
   return product;
+}
+
+// The authoritative effective (charged) price for a product row/object.
+// Used by checkout so totals never trust the client.
+export function effectivePrice(product) {
+  const price = Number(product.price);
+  const sale = product.salePrice == null ? null : Number(product.salePrice);
+  return sale != null && sale >= 0 && sale < price ? sale : price;
 }
 
 // On boot, ensure the schema exists. (Product/order seeding is a separate
@@ -58,7 +74,7 @@ async function ensureAdmin() {
 const PRODUCT_SELECT = `
   SELECT p.*,
          COALESCE(
-           (SELECT json_agg(json_build_object('url', pi.url, 'alt', pi.alt) ORDER BY pi.position, pi.id)
+           (SELECT json_agg(json_build_object('id', pi.id, 'url', pi.url, 'alt', pi.alt) ORDER BY pi.position, pi.id)
               FROM product_images pi WHERE pi.product_id = p.id),
            '[]'::json
          ) AS images
@@ -76,21 +92,22 @@ export async function getProduct(id) {
 
 export async function createProduct(data) {
   const { rows } = await query(
-    `INSERT INTO products (name, brand, category, price, rating, emoji, stock, description, specs)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+    `INSERT INTO products (name, brand, category, price, sale_price, rating, emoji, stock, description, specs)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
      RETURNING *`,
     [
       data.name, data.brand ?? "", data.category ?? "Uncategorized",
-      data.price, data.rating ?? 0, data.emoji ?? "📦",
+      data.price, data.sale_price ?? null, data.rating ?? 0, data.emoji ?? "📦",
       data.stock, data.description ?? "", JSON.stringify(data.specs ?? {}),
     ]
   );
-  return mapProduct(rows[0]);
+  return getProduct(rows[0].id);
 }
 
 export async function updateProduct(id, data) {
   // Build a dynamic SET clause from the provided fields only.
-  const fields = ["name", "brand", "category", "price", "rating", "emoji", "stock", "description", "specs"];
+  // sale_price is included so admins can set OR clear (null) a promotion.
+  const fields = ["name", "brand", "category", "price", "sale_price", "rating", "emoji", "stock", "description", "specs"];
   const sets = [];
   const values = [];
   let i = 1;
@@ -103,10 +120,11 @@ export async function updateProduct(id, data) {
   if (sets.length === 0) return getProduct(id); // nothing to update
   values.push(Number(id));
   const { rows } = await query(
-    `UPDATE products SET ${sets.join(", ")} WHERE id = $${i} RETURNING *`,
+    `UPDATE products SET ${sets.join(", ")} WHERE id = $${i} RETURNING id`,
     values
   );
-  return mapProduct(rows[0]);
+  if (rows.length === 0) return null;
+  return getProduct(rows[0].id);
 }
 
 export async function deleteProduct(id) {
@@ -132,16 +150,20 @@ function mapOrder(orderRow, itemRows) {
     items: itemRows.map(it => ({
       id: it.product_id,
       name: it.product_name,
-      price: Number(it.unit_price),
+      price: Number(it.unit_price),                                  // charged (sale) price
+      regularPrice: it.regular_price == null ? Number(it.unit_price) : Number(it.regular_price),
       qty: it.quantity,
     })),
     amounts: {
       subtotal: Number(orderRow.subtotal),
+      discount: Number(orderRow.discount ?? 0),
       shipping: Number(orderRow.shipping),
       tax: Number(orderRow.tax),
       total: Number(orderRow.total),
     },
     status: orderRow.status,
+    invoiceNo: orderRow.invoice_no ?? null,
+    accessToken: orderRow.access_token ?? null,
   };
 }
 
@@ -184,26 +206,28 @@ export async function createOrder(order) {
     );
     const customerId = custRows[0].id;
 
-    // Insert the order (with shipping snapshot + amounts).
+    // Insert the order (with shipping snapshot + amounts + invoice fields).
     await client.query(
       `INSERT INTO orders
          (id, customer_id, ship_name, ship_email, ship_phone, ship_address,
-          ship_city, ship_postal, ship_country, subtotal, shipping, tax, total, status, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+          ship_city, ship_postal, ship_country, subtotal, discount, shipping, tax, total,
+          status, created_at, invoice_no, access_token)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
       [
         order.id, customerId, c.name, c.email, c.phone, c.address,
         c.city, c.postal, c.country,
-        order.amounts.subtotal, order.amounts.shipping, order.amounts.tax, order.amounts.total,
-        order.status, order.createdAt,
+        order.amounts.subtotal, order.amounts.discount ?? 0, order.amounts.shipping,
+        order.amounts.tax, order.amounts.total,
+        order.status, order.createdAt, order.invoiceNo ?? null, order.accessToken ?? null,
       ]
     );
 
-    // Insert line items and decrement stock.
+    // Insert line items (snapshotting regular + charged price) and decrement stock.
     for (const item of order.items) {
       await client.query(
-        `INSERT INTO order_items (order_id, product_id, product_name, unit_price, quantity)
-         VALUES ($1,$2,$3,$4,$5)`,
-        [order.id, item.id, item.name, item.price, item.qty]
+        `INSERT INTO order_items (order_id, product_id, product_name, unit_price, regular_price, quantity)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [order.id, item.id, item.name, item.price, item.regularPrice ?? item.price, item.qty]
       );
       await client.query(
         "UPDATE products SET stock = GREATEST(0, stock - $1) WHERE id = $2",
@@ -211,8 +235,18 @@ export async function createOrder(order) {
       );
     }
 
-    return order;
+    return getOrderWithClient(client, order.id);
   });
+}
+
+// Read a full order within an existing transaction client.
+async function getOrderWithClient(client, id) {
+  const { rows: orders } = await client.query("SELECT * FROM orders WHERE id = $1", [id]);
+  if (orders.length === 0) return null;
+  const { rows: items } = await client.query(
+    "SELECT * FROM order_items WHERE order_id = $1 ORDER BY id", [id]
+  );
+  return mapOrder(orders[0], items);
 }
 
 
@@ -373,4 +407,154 @@ export async function getAdminById(id) {
     [Number(id)]
   );
   return rows[0] || null;
+}
+
+
+// ============================================================================
+// Product images (management)
+// ============================================================================
+
+// List images for a product (ordered).
+export async function getProductImages(productId) {
+  const { rows } = await query(
+    "SELECT id, product_id, url, alt, position FROM product_images WHERE product_id = $1 ORDER BY position, id",
+    [Number(productId)]
+  );
+  return rows.map(r => ({ id: r.id, productId: r.product_id, url: r.url, alt: r.alt, position: r.position }));
+}
+
+// Add an image. New images go to the end unless it's the first (position 0).
+export async function addProductImage(productId, url, alt = "") {
+  const { rows: maxRows } = await query(
+    "SELECT COALESCE(MAX(position), -1) AS maxpos FROM product_images WHERE product_id = $1",
+    [Number(productId)]
+  );
+  const position = Number(maxRows[0].maxpos) + 1;
+  const { rows } = await query(
+    `INSERT INTO product_images (product_id, url, alt, position)
+     VALUES ($1,$2,$3,$4) RETURNING id, product_id, url, alt, position`,
+    [Number(productId), url, alt, position]
+  );
+  const r = rows[0];
+  return { id: r.id, productId: r.product_id, url: r.url, alt: r.alt, position: r.position };
+}
+
+// Fetch a single image row (used to locate the file for deletion).
+export async function getProductImage(productId, imageId) {
+  const { rows } = await query(
+    "SELECT id, product_id, url, alt, position FROM product_images WHERE id = $1 AND product_id = $2",
+    [Number(imageId), Number(productId)]
+  );
+  return rows[0] ? { id: rows[0].id, productId: rows[0].product_id, url: rows[0].url, alt: rows[0].alt, position: rows[0].position } : null;
+}
+
+export async function deleteProductImage(productId, imageId) {
+  const { rows } = await query(
+    "DELETE FROM product_images WHERE id = $1 AND product_id = $2 RETURNING url",
+    [Number(imageId), Number(productId)]
+  );
+  return rows[0] || null; // returns { url } so the route can remove the file
+}
+
+// Set an image as the primary/main one by giving it the lowest position.
+export async function setMainImage(productId, imageId) {
+  return withTransaction(async (client) => {
+    const { rows } = await client.query(
+      "SELECT id FROM product_images WHERE id = $1 AND product_id = $2",
+      [Number(imageId), Number(productId)]
+    );
+    if (rows.length === 0) return false;
+    // Re-number: chosen image = 0, the rest keep relative order starting at 1.
+    const { rows: others } = await client.query(
+      "SELECT id FROM product_images WHERE product_id = $1 AND id <> $2 ORDER BY position, id",
+      [Number(productId), Number(imageId)]
+    );
+    await client.query("UPDATE product_images SET position = 0 WHERE id = $1", [Number(imageId)]);
+    let pos = 1;
+    for (const o of others) {
+      await client.query("UPDATE product_images SET position = $1 WHERE id = $2", [pos++, o.id]);
+    }
+    return true;
+  });
+}
+
+// Reorder all images for a product given an ordered array of image ids.
+export async function reorderImages(productId, orderedIds) {
+  return withTransaction(async (client) => {
+    // Only reorder ids that actually belong to this product.
+    const { rows } = await client.query(
+      "SELECT id FROM product_images WHERE product_id = $1", [Number(productId)]
+    );
+    const owned = new Set(rows.map(r => r.id));
+    let pos = 0;
+    for (const id of orderedIds) {
+      if (owned.has(Number(id))) {
+        await client.query("UPDATE product_images SET position = $1 WHERE id = $2", [pos++, Number(id)]);
+      }
+    }
+    return true;
+  });
+}
+
+// ============================================================================
+// Invoice number (server-authoritative, unique)
+// Format: INV-YYYYMMDD-00001  (sequence-backed, monotonic)
+// ============================================================================
+export async function nextInvoiceNumber() {
+  const { rows } = await query("SELECT nextval('invoice_seq') AS n");
+  const seq = String(rows[0].n).padStart(5, "0");
+  const d = new Date();
+  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+  return `INV-${ymd}-${seq}`;
+}
+
+// ============================================================================
+// Store settings (single row)
+// ============================================================================
+export async function getStoreSettings() {
+  const { rows } = await query("SELECT * FROM store_settings WHERE id = 1");
+  const r = rows[0] || { name: "Sinar Elektronik" };
+  return {
+    name: r.name ?? "Sinar Elektronik",
+    tagline: r.tagline ?? "",
+    address: r.address ?? "",
+    city: r.city ?? "",
+    postal: r.postal ?? "",
+    country: r.country ?? "",
+    phone: r.phone ?? "",
+    email: r.email ?? "",
+    taxId: r.tax_id ?? "",
+    bankInfo: r.bank_info ?? "",
+    currency: r.currency ?? "USD",
+  };
+}
+
+export async function updateStoreSettings(data) {
+  const fieldMap = {
+    name: "name", tagline: "tagline", address: "address", city: "city",
+    postal: "postal", country: "country", phone: "phone", email: "email",
+    taxId: "tax_id", bankInfo: "bank_info", currency: "currency",
+  };
+  const sets = [];
+  const values = [];
+  let i = 1;
+  for (const [key, col] of Object.entries(fieldMap)) {
+    if (data[key] !== undefined) {
+      sets.push(`${col} = $${i++}`);
+      values.push(String(data[key]));
+    }
+  }
+  if (sets.length === 0) return getStoreSettings();
+  await query(`UPDATE store_settings SET ${sets.join(", ")} WHERE id = 1`, values);
+  return getStoreSettings();
+}
+
+// ============================================================================
+// Raw order (includes access_token) — for invoice access control.
+// getOrder()/getOrders() already return invoiceNo + accessToken via mapOrder.
+// This is a thin helper used by the invoice route to check the token.
+// ============================================================================
+export async function getOrderAccessToken(id) {
+  const { rows } = await query("SELECT access_token FROM orders WHERE id = $1", [id]);
+  return rows.length ? rows[0].access_token : undefined; // undefined = not found
 }

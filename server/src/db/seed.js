@@ -13,12 +13,17 @@ export async function seed() {
     // seeded ids match the catalog ids.
     await client.query("TRUNCATE product_images, products RESTART IDENTITY CASCADE");
 
+    // A few demo promotional prices so the discount UI is visible out of the box.
+    // (Admins can change or clear these from the dashboard.)
+    const DEMO_SALES = { 1: 1299.00, 4: 799.00, 8: 229.00 };
+
     for (const p of SEED_PRODUCTS) {
+      const salePrice = p.salePrice ?? DEMO_SALES[p.id] ?? null;
       // Preserve the catalog id explicitly so frontend links stay stable.
       await client.query(
-        `INSERT INTO products (id, name, brand, category, price, rating, emoji, stock, description, specs)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [p.id, p.name, p.brand, p.category, p.price, p.rating, p.emoji, p.stock, p.description, JSON.stringify(p.specs)]
+        `INSERT INTO products (id, name, brand, category, price, sale_price, rating, emoji, stock, description, specs)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [p.id, p.name, p.brand, p.category, p.price, salePrice, p.rating, p.emoji, p.stock, p.description, JSON.stringify(p.specs)]
       );
 
       // A placeholder image row per product (emoji-based; swap for real URLs later).

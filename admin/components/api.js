@@ -49,6 +49,25 @@ async function request(path, { method = "GET", body, authRequired = true } = {})
   return data;
 }
 
+// Multipart upload (FormData) with the auth header — used for image uploads.
+async function uploadForm(path, formData) {
+  const headers = {};
+  const token = auth.getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${BASE}${path}`, { method: "POST", headers, body: formData });
+  if (res.status === 401) {
+    auth.clear();
+    if (onUnauthorized) onUnauthorized();
+    throw new AuthError("Your session has expired. Please sign in again.");
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detail = Array.isArray(data.details) ? data.details.join(" ") : "";
+    throw new Error([data.error, detail].filter(Boolean).join(": ") || `Upload failed (${res.status})`);
+  }
+  return data;
+}
+
 export const api = {
   // Auth
   login: (username, password) => request("/auth/login", { method: "POST", body: { username, password }, authRequired: false }),
@@ -61,10 +80,36 @@ export const api = {
   updateProduct: (id, data) => request(`/products/${id}`, { method: "PUT", body: data }),
   deleteProduct: id => request(`/products/${id}`, { method: "DELETE" }),
 
+  // Product images (admin)
+  listImages: id => request(`/admin/products/${id}/images`),
+  uploadImages: (id, files) => {
+    const fd = new FormData();
+    for (const f of files) fd.append("images", f);
+    return uploadForm(`/admin/products/${id}/images`, fd);
+  },
+  deleteImage: (id, imageId) => request(`/admin/products/${id}/images/${imageId}`, { method: "DELETE" }),
+  setMainImage: (id, imageId) => request(`/admin/products/${id}/images/${imageId}/main`, { method: "PUT" }),
+  reorderImages: (id, order) => request(`/admin/products/${id}/images/reorder`, { method: "PUT", body: { order } }),
+
+  // Store settings
+  getStoreSettings: () => request("/store-settings", { authRequired: false }),
+  updateStoreSettings: data => request("/store-settings", { method: "PUT", body: data }),
+
   // Orders
   listOrders: () => request("/orders"),
   getOrder: id => request(`/orders/${id}`),
   updateOrderStatus: (id, status) => request(`/orders/${id}/status`, { method: "PATCH", body: { status } }),
+  getInvoice: id => request(`/orders/${id}/invoice`),
+  // Fetch the invoice PDF as a blob (with the admin auth header) and return an
+  // object URL suitable for opening in a new tab or triggering a download.
+  fetchInvoicePdf: async id => {
+    const headers = {};
+    const token = auth.getToken();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${BASE}/orders/${id}/invoice/pdf`, { headers });
+    if (!res.ok) throw new Error(`Could not load invoice PDF (${res.status})`);
+    return URL.createObjectURL(await res.blob());
+  },
 
   // Analytics
   overview: () => request("/analytics/overview"),

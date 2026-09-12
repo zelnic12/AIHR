@@ -201,3 +201,37 @@ button.admin-back {
 .login-sub { color: var(--text-secondary); font-size: .9rem; margin-top: -.5rem; }
 .login-hint { color: var(--text-secondary); font-size: .8rem; text-align: center; }
 .login-hint code { background: var(--surface-secondary); padding: .1rem .35rem; border-radius: 5px; color: var(--text-primary); border: 1px solid var(--border); }
+
+
+/* ---- Promo pricing (admin) ---- */
+.discount-hint { font-size: .82rem; color: var(--text-secondary); }
+.discount-badge { display: inline-block; background: var(--primary); color: #fff; font-size: .7rem; font-weight: 700; padding: .12rem .45rem; border-radius: var(--radius-sm); margin-right: .35rem; }
+.discount-warn { color: var(--warning); }
+.sale-price { color: var(--primary); font-weight: 700; }
+.sale-off { color: var(--primary); font-size: .72rem; font-weight: 700; }
+.muted-dash { color: var(--border); }
+
+/* ---- Image manager (admin) ---- */
+.image-manager { margin-top: 1.4rem; border-top: 1px solid var(--border); padding-top: 1.1rem; }
+.im-label { display: block; font-size: .82rem; color: var(--text-secondary); font-weight: 600; margin-bottom: .7rem; }
+.im-note { margin-top: 1rem; color: var(--text-secondary); font-size: .85rem; }
+.im-main { display: flex; align-items: center; gap: .8rem; margin-bottom: .9rem; }
+.im-main-preview {
+  width: 96px; height: 96px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  display: grid; place-items: center; overflow: hidden; background: var(--surface-secondary);
+}
+.im-main-preview img { width: 100%; height: 100%; object-fit: cover; }
+.im-emoji { font-size: 2.4rem; }
+.im-main-tag { font-size: .72rem; font-weight: 700; color: var(--primary); background: var(--primary-light); padding: .2rem .55rem; border-radius: var(--radius-sm); }
+.im-empty { color: var(--text-secondary); font-size: .8rem; }
+.im-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: .7rem; margin-bottom: .9rem; }
+.im-cell { border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.im-cell-preview { height: 64px; display: grid; place-items: center; background: var(--surface-secondary); overflow: hidden; }
+.im-cell-preview img { width: 100%; height: 100%; object-fit: cover; }
+.im-cell-preview .im-emoji { font-size: 1.6rem; }
+.im-cell-actions { display: flex; flex-direction: column; gap: .2rem; padding: .3rem; }
+.im-cell-actions .icon-action { font-size: .68rem; padding: .2rem .3rem; text-align: center; }
+.im-single-actions { margin-bottom: .9rem; }
+.im-upload { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
+.im-hint { color: var(--text-secondary); font-size: .75rem; }
+.im-status { color: var(--primary); font-size: .78rem; }

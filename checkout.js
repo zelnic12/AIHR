@@ -242,12 +242,26 @@ async function handleSubmit(e) {
  * ========================================================================= */
 function showConfirmation(order) {
   const c = order.customer;
-  $("#confirmName").textContent = c.name.split(" ")[0] || c.name;
+  $("#confirmInvoiceNo").textContent = order.invoiceNo || order.id;
   $("#confirmOrderId").textContent = order.id;
   $("#confirmTotal").textContent = VE.money(order.amounts.total);
   $("#confirmEmail").textContent = c.email;
   $("#confirmAddress").textContent =
     `${c.address}, ${c.city} ${c.postal}, ${c.country}`;
+
+  // Invoice links use the per-order access token so the (unauthenticated)
+  // customer can view only their own invoice.
+  const token = encodeURIComponent(order.accessToken || "");
+  const base = `${API_BASE}/orders/${encodeURIComponent(order.id)}/invoice/pdf?token=${token}`;
+  const viewLink = $("#viewInvoiceLink");
+  const dlLink = $("#downloadInvoiceLink");
+  if (order.accessToken) {
+    viewLink.href = base;
+    dlLink.href = `${base}&download=1`;
+    $(".confirm-actions").hidden = false;
+  } else {
+    $(".confirm-actions").hidden = true;
+  }
 
   $("#checkoutView").hidden = true;
   $("#confirmationView").hidden = false;

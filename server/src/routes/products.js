@@ -31,14 +31,27 @@ function validateProduct(body, { partial = false } = {}) {
   if (has("specs") && (typeof body.specs !== "object" || Array.isArray(body.specs))) {
     errors.push("specs must be an object");
   }
+  // sale_price: null clears the promotion. When present it must be a
+  // non-negative number and not exceed the regular price.
+  if (body.sale_price !== undefined && body.sale_price !== null) {
+    if (typeof body.sale_price !== "number" || Number.isNaN(body.sale_price) || body.sale_price < 0) {
+      errors.push("sale_price must be a non-negative number or null");
+    } else if (typeof body.price === "number" && body.sale_price > body.price) {
+      errors.push("sale_price cannot be greater than price");
+    }
+  }
   return errors;
 }
 
 // Build a clean product object from a request body (whitelist fields).
 function sanitizeProduct(body) {
-  const fields = ["name", "brand", "category", "price", "rating", "emoji", "stock", "description", "specs"];
+  const fields = ["name", "brand", "category", "price", "sale_price", "rating", "emoji", "stock", "description", "specs"];
   const out = {};
   for (const f of fields) if (body[f] !== undefined) out[f] = body[f];
+  // Normalize: sale_price === price (or 0) means "no discount" → store as null.
+  if (out.sale_price !== undefined && out.sale_price !== null) {
+    if (typeof out.price === "number" && out.sale_price >= out.price) out.sale_price = null;
+  }
   return out;
 }
 
@@ -84,7 +97,17 @@ router.put("/:id", requireAuth, async (req, res, next) => {
     const errors = validateProduct(req.body, { partial: true });
     if (errors.length) return res.status(400).json({ error: "Validation failed", details: errors });
 
-    const updated = await store.updateProduct(req.params.id, sanitizeProduct(req.body));
+    const data = sanitizeProduct(req.body);
+
+    // Guard: if sale_price is being set without a new price, compare against the
+    // product's existing price so a promo can never exceed the list price.
+    if (data.sale_price != null && data.price === undefined) {
+      const existing = await store.getProduct(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Product not found" });
+      if (data.sale_price >= existing.price) data.sale_price = null; // treat as no discount
+    }
+
+    const updated = await store.updateProduct(req.params.id, data);
     if (!updated) return res.status(404).json({ error: "Product not found" });
     res.json(updated);
   } catch (err) { next(err); }

@@ -125,10 +125,15 @@
       <h1>Thank you, <span id="confirmName">friend</span>!</h1>
       <p class="confirm-sub">Your order has been placed successfully.</p>
       <div class="confirm-card">
+        <div class="confirm-row"><span>Invoice number</span><strong id="confirmInvoiceNo">—</strong></div>
         <div class="confirm-row"><span>Order number</span><strong id="confirmOrderId">—</strong></div>
         <div class="confirm-row"><span>Amount paid</span><strong id="confirmTotal">—</strong></div>
         <div class="confirm-row"><span>Confirmation sent to</span><strong id="confirmEmail">—</strong></div>
         <div class="confirm-row"><span>Shipping to</span><strong id="confirmAddress">—</strong></div>
+      </div>
+      <div class="confirm-actions">
+        <a id="viewInvoiceLink" class="btn btn-secondary" target="_blank" rel="noopener">View invoice</a>
+        <a id="downloadInvoiceLink" class="btn btn-secondary" target="_blank" rel="noopener">Download PDF</a>
       </div>
       <p class="confirm-note">A demo confirmation — no payment was actually charged.</p>
       <a href="index.html" class="btn btn-primary">Continue shopping</a>

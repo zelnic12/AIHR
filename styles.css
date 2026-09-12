@@ -91,9 +91,14 @@ img { max-width: 100%; display: block; }
 .brand { display: flex; align-items: center; gap: .55rem; font-weight: 800; font-size: 1.25rem; color: var(--text-primary); }
 .brand-mark {
   display: inline-grid; place-items: center;
-  width: 32px; height: 32px; border-radius: var(--radius-sm);
+  width: 34px; height: 34px; border-radius: 50%; overflow: hidden;
   background: var(--primary); color: #fff; font-size: 1rem; font-weight: 800;
+  flex-shrink: 0;
 }
+/* When the mark holds the logo image, let it fill the round badge. */
+.brand-mark img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* An image-based mark doesn't need the red fill behind it. */
+.brand-mark.has-img { background: transparent; }
 .brand-name { letter-spacing: -.01em; }
 .brand-name span { color: var(--primary); }
 

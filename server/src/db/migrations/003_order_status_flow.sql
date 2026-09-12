@@ -30,7 +30,10 @@ UPDATE orders SET status = 'needs_shipping' WHERE status IN ('pending', 'paid');
 -- 4) Set the new default.
 ALTER TABLE orders ALTER COLUMN status SET DEFAULT 'needs_shipping';
 
--- 5) Re-add the CHECK with the new allowed set.
+-- 5) Re-add the CHECK with the allowed set.
+--    NOTE: 'awaiting_payment' is included so that re-running the full migration
+--    chain on a DB already advanced by migration 008 does not violate this
+--    constraint. Migration 008 (later) sets the same final set explicitly.
 ALTER TABLE orders
   ADD CONSTRAINT orders_status_check
-  CHECK (status IN ('needs_shipping', 'shipped', 'completed', 'cancelled'));
+  CHECK (status IN ('awaiting_payment', 'needs_shipping', 'shipped', 'completed', 'cancelled'));

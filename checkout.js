@@ -204,13 +204,12 @@ async function handleSubmit(e) {
   btn.disabled = true;
   btn.innerHTML = "Processing…";
 
-  try {
-    // 1) Run the payment provider (demo gateway for now).
-    const result = await activeProvider.pay(order);
-    if (!result.success) throw new Error(result.error || "Payment failed.");
+  const restoreButton = () => { btn.disabled = false; btn.innerHTML = originalLabel; };
 
-    // 2) Persist the order via the backend API. The server validates stock and
-    //    recomputes the authoritative totals — its response is the source of truth.
+  try {
+    // Persist the order via the backend API. The server validates stock and
+    // recomputes the authoritative totals — its response is the source of truth
+    // and (when Midtrans is configured) includes a Snap token for payment.
     const res = await fetch(`${API_BASE}/orders`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -223,25 +222,111 @@ async function handleSubmit(e) {
       throw new Error([body.error, detail].filter(Boolean).join(": ") || "Could not place the order.");
     }
 
-    // Use the server's confirmed order (id, amounts, status).
-    body.transactionId = result.transactionId;
     localStorage.setItem("voltedge_last_order", JSON.stringify(body));
 
-    // Order placed — clear the cart and show confirmation.
-    VE.clearCart();
-    showConfirmation(body);
+    // If Midtrans returned a Snap token, open the QRIS payment popup. Otherwise
+    // (gateway not configured) fall back to showing confirmation directly so
+    // demos still work end-to-end.
+    if (body.snapToken) {
+      await payWithSnap(body, restoreButton);
+    } else {
+      VE.clearCart();
+      showConfirmation(body);
+    }
   } catch (err) {
     $("#formError").textContent = err.message || "Something went wrong. Please try again.";
     $("#formError").hidden = false;
-    btn.disabled = false;
-    btn.innerHTML = originalLabel;
+    restoreButton();
   }
+}
+
+/* =========================================================================
+ * Midtrans Snap popup
+ * ========================================================================= */
+
+// Load the Snap.js script once (sandbox or production URL), keyed by client key.
+let snapScriptPromise = null;
+function loadSnapScript(clientKey, isProduction) {
+  if (window.snap) return Promise.resolve();
+  if (snapScriptPromise) return snapScriptPromise;
+  snapScriptPromise = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = isProduction
+      ? "https://app.midtrans.com/snap/snap.js"
+      : "https://app.sandbox.midtrans.com/snap/snap.js";
+    s.setAttribute("data-client-key", clientKey || "");
+    s.onload = () => resolve();
+    s.onerror = () => { snapScriptPromise = null; reject(new Error("Could not load the payment module.")); };
+    document.head.appendChild(s);
+  });
+  return snapScriptPromise;
+}
+
+// Small inline status line shown near the Place Order button.
+function setPayStatus(html, kind = "info") {
+  let el = $("#payStatus");
+  if (!el) {
+    el = document.createElement("p");
+    el.id = "payStatus";
+    el.className = "pay-status";
+    $("#placeOrderBtn").insertAdjacentElement("afterend", el);
+  }
+  el.className = `pay-status ${kind}`;
+  el.innerHTML = html;
+  el.hidden = false;
+}
+function clearPayStatus() { const el = $("#payStatus"); if (el) el.hidden = true; }
+
+async function payWithSnap(order, restoreButton) {
+  try {
+    await loadSnapScript(order.midtransClientKey, order.midtransProduction);
+  } catch (e) {
+    // Order exists but the popup couldn't load — let them retry.
+    setPayStatus(`${e.message} <button type="button" class="link-btn" id="retryPay">Retry payment</button>`, "error");
+    wireRetry(order, restoreButton);
+    restoreButton();
+    return;
+  }
+
+  setPayStatus("Opening secure QRIS payment…");
+
+  window.snap.pay(order.snapToken, {
+    // Payment confirmed.
+    onSuccess() {
+      clearPayStatus();
+      VE.clearCart();
+      showConfirmation(order);
+    },
+    // QRIS can take a moment to confirm — treat as placed-but-awaiting.
+    onPending() {
+      VE.clearCart();
+      showConfirmation(order, { pending: true });
+    },
+    // Payment failed — keep the order, let them retry.
+    onError() {
+      setPayStatus(`Payment failed. <button type="button" class="link-btn" id="retryPay">Try again</button>`, "error");
+      wireRetry(order, restoreButton);
+      restoreButton();
+    },
+    // Customer dismissed the popup without paying.
+    onClose() {
+      setPayStatus(`Payment window closed before completing. <button type="button" class="link-btn" id="retryPay">Resume payment</button>`, "warn");
+      wireRetry(order, restoreButton);
+      restoreButton();
+    },
+  });
+}
+
+// Re-open the Snap popup for the same order (token is still valid).
+function wireRetry(order, restoreButton) {
+  const b = $("#retryPay");
+  if (b) b.addEventListener("click", () => { clearPayStatus(); payWithSnap(order, restoreButton); });
 }
 
 /* =========================================================================
  * Confirmation screen
  * ========================================================================= */
-function showConfirmation(order) {
+function showConfirmation(order, { pending = false } = {}) {
   const c = order.customer;
   $("#confirmInvoiceNo").textContent = order.invoiceNo || order.id;
   $("#confirmOrderId").textContent = order.id;
@@ -249,6 +334,17 @@ function showConfirmation(order) {
   $("#confirmEmail").textContent = c.email;
   $("#confirmAddress").textContent =
     `${c.address}, ${c.city} ${c.postal}, ${c.country}`;
+
+  // Tailor the heading/subtext for a pending QRIS payment vs. a completed one.
+  const titleEl = $("#confirmTitle");
+  const subEl = $("#confirmSub");
+  if (pending) {
+    if (titleEl) titleEl.textContent = "Almost done — complete your payment";
+    if (subEl) subEl.textContent = "We've received your order. Please finish the QRIS payment; it can take a moment to confirm. We'll process your order once payment is received.";
+  } else {
+    if (titleEl) titleEl.textContent = "Payment received — thank you!";
+    if (subEl) subEl.textContent = "Your order is confirmed and will be processed shortly.";
+  }
 
   // Invoice links use the per-order access token so the (unauthenticated)
   // customer can view only their own invoice.

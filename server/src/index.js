@@ -14,6 +14,7 @@ import imagesRouter from "./routes/images.js";
 import invoicesRouter from "./routes/invoices.js";
 import storeSettingsRouter from "./routes/store-settings.js";
 import { publicChatRouter, adminChatRouter } from "./routes/chat.js";
+import paymentsRouter from "./routes/payments.js";
 import { requireAuth } from "./auth.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -50,6 +51,8 @@ app.use("/api/store-settings", storeSettingsRouter);
 app.use("/api/admin/products", imagesRouter);
 // Order invoices (JSON + PDF). Access control (admin JWT or per-order token) inside.
 app.use("/api/orders", invoicesRouter);
+// Midtrans payment notifications (public webhook, signature-verified inside).
+app.use("/api/payments", paymentsRouter);
 // Live chat: public customer endpoints (session-token scoped, no login).
 app.use("/api/chat", publicChatRouter);
 // Live chat: admin endpoints (JWT-protected at the mount point).

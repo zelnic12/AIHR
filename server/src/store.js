@@ -167,6 +167,7 @@ function mapOrder(orderRow, itemRows) {
     paymentStatus: orderRow.payment_status ?? "pending",
     paymentToken: orderRow.payment_token ?? null,
     paymentRedirectUrl: orderRow.payment_redirect_url ?? null,
+    paymentTxnId: orderRow.payment_txn_id ?? null,
   };
 }
 
@@ -178,6 +179,19 @@ export async function setOrderPayment(id, { token = null, redirectUrl = null, st
   if (status) { sets.push(`payment_status = $${values.length + 1}`); values.push(status); }
   await query(`UPDATE orders SET ${sets.join(", ")} WHERE id = $1`, values);
   return getOrder(id);
+}
+
+// Apply a (verified) Midtrans notification: update payment_status, the
+// transaction id, and — when the payment settles or fails — the fulfilment
+// status. Only updates fulfilment when `orderStatus` is provided.
+// Returns { updated: boolean }.
+export async function applyPaymentNotification(orderId, { paymentStatus, orderStatus = null, txnId = null }) {
+  const sets = ["payment_status = $2"];
+  const values = [orderId, paymentStatus];
+  if (txnId) { sets.push(`payment_txn_id = $${values.length + 1}`); values.push(txnId); }
+  if (orderStatus) { sets.push(`status = $${values.length + 1}`); values.push(orderStatus); }
+  const { rowCount } = await query(`UPDATE orders SET ${sets.join(", ")} WHERE id = $1`, values);
+  return { updated: rowCount > 0 };
 }
 
 export async function getOrders() {

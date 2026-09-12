@@ -5,10 +5,11 @@ import { openModal } from "../components/modal.js";
 import { toast } from "../components/toast.js";
 
 // Sequential fulfilment flow (in stage order), plus Cancelled as a separate state.
-const STATUSES = ["needs_shipping", "shipped", "completed", "cancelled"];
+const STATUSES = ["awaiting_payment", "needs_shipping", "shipped", "completed", "cancelled"];
 
 // Human-readable labels for each status value.
 const STATUS_LABELS = {
+  awaiting_payment: "Awaiting Payment",
   needs_shipping: "Needs Shipping",
   shipped: "Shipped",
   completed: "Order Completed",
@@ -22,9 +23,21 @@ function statusLabel(status) {
   return STATUS_LABELS[status] || status;
 }
 
+const PAYMENT_LABELS = {
+  paid: "Paid",
+  pending: "Awaiting payment",
+  failed: "Failed",
+  expired: "Expired",
+  cancelled: "Cancelled",
+  unconfigured: "No gateway",
+};
+function paymentLabel(s) {
+  return PAYMENT_LABELS[s] || s || "—";
+}
+
 function statusBadge(status) {
   // Class uses the (normalized) status value; label is the friendly text.
-  const cls = ["needs_shipping", "shipped", "completed", "cancelled"].includes(status)
+  const cls = ["awaiting_payment", "needs_shipping", "shipped", "completed", "cancelled"].includes(status)
     ? status
     : (status === "pending" || status === "paid" ? "needs_shipping" : status);
   return `<span class="badge ${esc(cls)}">${esc(statusLabel(status))}</span>`;
@@ -78,6 +91,16 @@ function orderDetail(root, order) {
         <div style="font-size:1.3rem;font-weight:800;margin-top:.3rem">Total ${money(order.amounts.total)}</div>
       </div>
       ${order.invoiceNo ? `<p style="color:var(--muted);font-size:.82rem;margin-top:.6rem">Invoice: <strong>${esc(order.invoiceNo)}</strong></p>` : ""}
+      <div class="payment-info">
+        <div class="payment-info-row">
+          <span>Payment</span>
+          <span class="pay-badge pay-${esc(order.paymentStatus || "pending")}">${esc(paymentLabel(order.paymentStatus))}</span>
+        </div>
+        ${order.paymentTxnId ? `<div class="payment-info-row">
+          <span>Midtrans txn id</span>
+          <code class="pay-txn">${esc(order.paymentTxnId)}</code>
+        </div>` : ""}
+      </div>
       <div class="form-field" style="margin-top:1.2rem">
         <label>Update status</label>
         <select id="statusSel">
@@ -114,6 +137,7 @@ function orderDetail(root, order) {
 // Kanban board columns, in pipeline order. Cancelled is kept separate so it
 // doesn't mix with the active pipeline.
 const BOARD_COLUMNS = [
+  { status: "awaiting_payment", title: "Awaiting Payment" },
   { status: "needs_shipping", title: "Needs Shipping" },
   { status: "shipped", title: "Shipped" },
   { status: "completed", title: "Order Completed" },
@@ -121,25 +145,28 @@ const BOARD_COLUMNS = [
 ];
 
 // The primary "advance" action available on a card for a given status.
-// null = no forward action (terminal state).
+// null = no forward action (terminal / awaiting external event).
 const NEXT_ACTION = {
+  awaiting_payment: null,   // advances to needs_shipping only when payment settles
   needs_shipping: { to: "shipped", label: "Mark as Shipped" },
   shipped: { to: "completed", label: "Mark Completed" },
   completed: null,
   cancelled: null,
 };
 
+const VALID_BOARD = ["awaiting_payment", "needs_shipping", "shipped", "completed", "cancelled"];
+
 // Normalize any legacy status onto a board column so no order is ever missing.
 function boardStatus(status) {
   if (status === "pending" || status === "paid") return "needs_shipping";
-  return ["needs_shipping", "shipped", "completed", "cancelled"].includes(status) ? status : "needs_shipping";
+  return VALID_BOARD.includes(status) ? status : "needs_shipping";
 }
 
 function orderCard(o) {
   const itemCount = o.items.reduce((s, i) => s + i.qty, 0);
   const bs = boardStatus(o.status);
   const next = NEXT_ACTION[bs];
-  const canCancel = bs === "needs_shipping" || bs === "shipped";
+  const canCancel = bs === "awaiting_payment" || bs === "needs_shipping" || bs === "shipped";
   return `
     <article class="order-card" data-card="${esc(o.id)}" tabindex="0" role="button" aria-label="Open order ${esc(o.id)}">
       <div class="order-card-top">

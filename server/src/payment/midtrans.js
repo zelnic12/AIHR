@@ -90,3 +90,51 @@ export async function createSnapTransaction(order) {
   const result = await snap.createTransaction(parameter);
   return { token: result.token, redirectUrl: result.redirect_url };
 }
+
+
+import crypto from "node:crypto";
+
+// Verify a Midtrans notification's authenticity.
+// signature_key = SHA512(order_id + status_code + gross_amount + server_key).
+// Returns false when the gateway isn't configured (can't verify → don't trust).
+export function verifySignature(payload) {
+  if (!SERVER_KEY) return false;
+  const { order_id, status_code, gross_amount, signature_key } = payload || {};
+  if (!order_id || !status_code || gross_amount == null || !signature_key) return false;
+  const expected = crypto
+    .createHash("sha512")
+    .update(`${order_id}${status_code}${gross_amount}${SERVER_KEY}`)
+    .digest("hex");
+  // Constant-time comparison to avoid timing leaks.
+  const a = Buffer.from(expected);
+  const b = Buffer.from(String(signature_key));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// Map a Midtrans transaction_status (+ fraud_status) to our domain result.
+// Returns { paymentStatus, orderStatus|null }:
+//   - paymentStatus → orders.payment_status
+//   - orderStatus   → orders.status (fulfilment); null = leave unchanged
+export function mapTransactionStatus(transactionStatus, fraudStatus) {
+  switch (transactionStatus) {
+    case "capture":
+      // Card capture: only "accept" is truly paid; "challenge" stays pending.
+      return fraudStatus === "accept"
+        ? { paymentStatus: "paid", orderStatus: "needs_shipping" }
+        : { paymentStatus: "pending", orderStatus: null };
+    case "settlement":
+      // QRIS / bank / e-wallet funds settled → paid, enters fulfilment.
+      return { paymentStatus: "paid", orderStatus: "needs_shipping" };
+    case "pending":
+      // Awaiting customer payment — do NOT show in Needs Shipping yet.
+      return { paymentStatus: "pending", orderStatus: null };
+    case "deny":
+      return { paymentStatus: "failed", orderStatus: "cancelled" };
+    case "cancel":
+      return { paymentStatus: "cancelled", orderStatus: "cancelled" };
+    case "expire":
+      return { paymentStatus: "expired", orderStatus: "cancelled" };
+    default:
+      return { paymentStatus: "pending", orderStatus: null };
+  }
+}

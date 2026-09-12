@@ -371,3 +371,19 @@ button.admin-back {
 @media (max-width: 560px) {
   .orders-board { grid-template-columns: 1fr; }
 }
+
+
+/* ---- Payment info (admin order detail) ---- */
+.payment-info { margin-top: .8rem; border-top: 1px solid var(--border); padding-top: .8rem; display: flex; flex-direction: column; gap: .4rem; }
+.payment-info-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; font-size: .85rem; color: var(--text-secondary); }
+.pay-badge { font-size: .72rem; font-weight: 700; padding: .2rem .55rem; border-radius: var(--radius-sm); text-transform: uppercase; letter-spacing: .02em; }
+.pay-badge.pay-paid { background: #e8f6ee; color: var(--success); }
+.pay-badge.pay-pending { background: #fff7e6; color: #b26a00; }
+.pay-badge.pay-failed, .pay-badge.pay-expired, .pay-badge.pay-cancelled { background: #fdecec; color: var(--danger); }
+.pay-badge.pay-unconfigured { background: var(--surface-secondary); color: var(--text-secondary); }
+.pay-txn { font-family: monospace; font-size: .78rem; color: var(--text-primary); background: var(--surface-secondary); padding: .12rem .4rem; border-radius: 5px; word-break: break-all; }
+
+
+/* Awaiting-payment status (kept out of the fulfilment pipeline until paid) */
+.badge.awaiting_payment { background: #eef1f6; color: #55617a; }
+.board-col-head.status-awaiting_payment { border-bottom-color: #8a94a6; }

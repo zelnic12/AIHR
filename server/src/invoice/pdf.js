@@ -11,8 +11,12 @@ const BORDER = "#E5E5E5";
 const PAGE_MARGIN = 48;
 
 function fmtMoney(currency, n) {
+  if (currency === "IDR") {
+    // Indonesian Rupiah: thousands dots, no decimal cents.
+    return "Rp " + Math.round(Number(n) || 0).toLocaleString("id-ID");
+  }
   const value = Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const symbol = currency === "IDR" ? "Rp" : (currency === "USD" ? "$" : "");
+  const symbol = currency === "USD" ? "$" : "";
   return symbol ? `${symbol}${value}` : `${value} ${currency}`;
 }
 

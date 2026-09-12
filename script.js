@@ -27,7 +27,8 @@ let state = {
 };
 
 // ---- Helpers ----
-const money = n => "$" + n.toFixed(2);
+// Indonesian Rupiah: "Rp " prefix, thousands dots, no decimal cents.
+const money = n => "Rp " + Math.round(Number(n) || 0).toLocaleString("id-ID");
 const $ = sel => document.querySelector(sel);
 const saveCart = () => localStorage.setItem("voltedge_cart", JSON.stringify(state.cart));
 const getProduct = id => PRODUCTS.find(p => p.id === Number(id));

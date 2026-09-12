@@ -5,6 +5,7 @@ import { renderOverview } from "./views/overview.js";
 import { renderProducts } from "./views/products.js";
 import { renderOrders } from "./views/orders.js";
 import { renderSales } from "./views/sales.js";
+import { renderMessages_view } from "./views/messages.js";
 import { renderLogin } from "./views/login.js";
 import { auth, api, setUnauthorizedHandler } from "./components/api.js";
 import { toast } from "./components/toast.js";
@@ -13,6 +14,7 @@ const VIEWS = {
   overview: { title: "Overview", render: renderOverview },
   products: { title: "Products", render: renderProducts },
   orders:   { title: "Orders", render: renderOrders },
+  messages: { title: "Messages", render: renderMessages_view },
   sales:    { title: "Sales performance", render: renderSales },
 };
 

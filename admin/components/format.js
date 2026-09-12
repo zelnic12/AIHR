@@ -1,7 +1,8 @@
 // Shared formatting + safety helpers for the admin UI.
 
+// Indonesian Rupiah: "Rp " prefix, thousands dots, no decimal cents.
 export const money = n =>
-  "$" + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  "Rp " + Math.round(Number(n) || 0).toLocaleString("id-ID");
 
 export const num = n => Number(n || 0).toLocaleString();
 

@@ -128,7 +128,8 @@
   ];
 
   // ---- Shared helpers ----
-  const money = n => "$" + Number(n).toFixed(2);
+  // Indonesian Rupiah: "Rp " prefix, thousands dots, no decimal cents.
+  const money = n => "Rp " + Math.round(Number(n) || 0).toLocaleString("id-ID");
   const getProduct = id => PRODUCTS.find(p => p.id === Number(id));
   const esc = s => String(s).replace(/[&<>"']/g, c =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

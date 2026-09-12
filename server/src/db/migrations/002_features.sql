@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS store_settings (
   email       TEXT        NOT NULL DEFAULT '',
   tax_id      TEXT        NOT NULL DEFAULT '',
   bank_info   TEXT        NOT NULL DEFAULT '',
-  currency    TEXT        NOT NULL DEFAULT 'USD',
+  currency    TEXT        NOT NULL DEFAULT 'IDR',
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

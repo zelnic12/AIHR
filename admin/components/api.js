@@ -95,6 +95,11 @@ export const api = {
   getStoreSettings: () => request("/store-settings", { authRequired: false }),
   updateStoreSettings: data => request("/store-settings", { method: "PUT", body: data }),
 
+  // Chat (admin)
+  listConversations: () => request("/admin/chat/conversations"),
+  getConversation: id => request(`/admin/chat/conversations/${id}/messages`),
+  replyConversation: (id, body) => request(`/admin/chat/conversations/${id}/messages`, { method: "POST", body: { body } }),
+
   // Orders
   listOrders: () => request("/orders"),
   getOrder: id => request(`/orders/${id}`),

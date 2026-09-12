@@ -525,7 +525,7 @@ export async function getStoreSettings() {
     email: r.email ?? "",
     taxId: r.tax_id ?? "",
     bankInfo: r.bank_info ?? "",
-    currency: r.currency ?? "USD",
+    currency: r.currency ?? "IDR",
   };
 }
 
@@ -557,4 +557,109 @@ export async function updateStoreSettings(data) {
 export async function getOrderAccessToken(id) {
   const { rows } = await query("SELECT access_token FROM orders WHERE id = $1", [id]);
   return rows.length ? rows[0].access_token : undefined; // undefined = not found
+}
+
+
+// ============================================================================
+// Live chat (customer ↔ admin)
+// Customers are identified by an opaque session_token (no login). All customer
+// reads/writes are scoped by (conversationId + token) so they can only access
+// their own conversation.
+// ============================================================================
+import crypto from "node:crypto";
+
+function mapConversation(row) {
+  return {
+    id: row.id,
+    customerName: row.customer_name,
+    customerEmail: row.customer_email,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    lastMessageAt: row.last_message_at instanceof Date ? row.last_message_at.toISOString() : row.last_message_at,
+    adminUnread: row.admin_unread,
+    customerUnread: row.customer_unread,
+  };
+}
+
+function mapMessage(row) {
+  return {
+    id: row.id,
+    sender: row.sender,
+    body: row.body,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+  };
+}
+
+// Start a new conversation. Returns { conversation, sessionToken }.
+export async function createConversation(name, email) {
+  const token = crypto.randomBytes(24).toString("hex");
+  const { rows } = await query(
+    `INSERT INTO chat_conversations (customer_name, customer_email, session_token)
+     VALUES ($1,$2,$3) RETURNING *`,
+    [name, email, token]
+  );
+  return { conversation: mapConversation(rows[0]), sessionToken: token };
+}
+
+// Resolve a conversation by id, enforcing the customer's session token.
+export async function getConversationForToken(id, token) {
+  const { rows } = await query(
+    "SELECT * FROM chat_conversations WHERE id = $1 AND session_token = $2",
+    [Number(id), token]
+  );
+  return rows[0] ? mapConversation(rows[0]) : null;
+}
+
+// Append a message from either side and bump counters/timestamps atomically.
+export async function addChatMessage(conversationId, sender, body) {
+  return withTransaction(async (client) => {
+    const { rows } = await client.query(
+      `INSERT INTO chat_messages (conversation_id, sender, body) VALUES ($1,$2,$3) RETURNING *`,
+      [Number(conversationId), sender, body]
+    );
+    // A customer message is unread for the admin; an admin reply is unread for the customer.
+    const bump = sender === "customer"
+      ? "admin_unread = admin_unread + 1"
+      : "customer_unread = customer_unread + 1";
+    await client.query(
+      `UPDATE chat_conversations SET last_message_at = now(), ${bump} WHERE id = $1`,
+      [Number(conversationId)]
+    );
+    return mapMessage(rows[0]);
+  });
+}
+
+// List messages for a conversation (optionally only those after `afterId` for
+// lightweight polling).
+export async function listChatMessages(conversationId, afterId = 0) {
+  const { rows } = await query(
+    "SELECT * FROM chat_messages WHERE conversation_id = $1 AND id > $2 ORDER BY id",
+    [Number(conversationId), Number(afterId) || 0]
+  );
+  return rows.map(mapMessage);
+}
+
+// Clear the customer's unread counter (they've viewed the admin replies).
+export async function markCustomerRead(conversationId) {
+  await query("UPDATE chat_conversations SET customer_unread = 0 WHERE id = $1", [Number(conversationId)]);
+}
+
+// ---- Admin side ----
+export async function listConversations() {
+  const { rows } = await query(`
+    SELECT c.*,
+      (SELECT body FROM chat_messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_body
+    FROM chat_conversations c
+    ORDER BY c.last_message_at DESC
+  `);
+  return rows.map(r => ({ ...mapConversation(r), lastBody: r.last_body || "" }));
+}
+
+export async function getConversation(id) {
+  const { rows } = await query("SELECT * FROM chat_conversations WHERE id = $1", [Number(id)]);
+  return rows[0] ? mapConversation(rows[0]) : null;
+}
+
+// Clear the admin's unread counter (they've viewed the customer messages).
+export async function markAdminRead(conversationId) {
+  await query("UPDATE chat_conversations SET admin_unread = 0 WHERE id = $1", [Number(conversationId)]);
 }

@@ -17,6 +17,10 @@ function productForm(root, product = null) {
     title: isEdit ? `Edit — ${p.name}` : "Add product",
     bodyHTML: `
       <form id="prodForm">
+        ${isEdit ? `<div class="form-preview">
+          <div class="form-preview-thumb" id="activeImagePreview">${productThumb(p, "preview-thumb")}</div>
+          <div class="form-preview-meta"><span class="form-preview-label">Active image</span><span class="form-preview-name">${esc(p.name || "")}</span></div>
+        </div>` : ""}
         <div class="form-grid">
           <div class="form-field full"><label>Name *</label><input name="name" value="${esc(p.name || "")}" required /></div>
           <div class="form-field"><label>Brand</label><input name="brand" value="${esc(p.brand || "")}" /></div>
@@ -58,8 +62,22 @@ function productForm(root, product = null) {
       saleEl.addEventListener("input", updateHint);
       updateHint();
 
-      // Image manager (edit only).
-      if (isEdit) mountImageManager(overlay.querySelector("#imageManagerBody"), p.id);
+      // Image manager (edit only). Keep the top "active image" preview in sync
+      // whenever images change (upload / set-main / delete).
+      if (isEdit) {
+        const previewEl = overlay.querySelector("#activeImagePreview");
+        const updatePreview = images => {
+          const realUrl = realImageUrl(images);
+          if (realUrl) {
+            previewEl.innerHTML = `<span class="preview-thumb"><img src="${esc(realUrl)}" alt="" loading="lazy" /></span>`;
+          } else {
+            const glyph = (images && images[0] && images[0].url.startsWith("emoji:"))
+              ? images[0].url.slice(6) : (p.emoji || "📦");
+            previewEl.innerHTML = `<span class="preview-thumb preview-thumb-emoji">${esc(glyph)}</span>`;
+          }
+        };
+        mountImageManager(overlay.querySelector("#imageManagerBody"), p.id, updatePreview);
+      }
 
       overlay.querySelector("#prodSave").addEventListener("click", async () => {
         const form = overlay.querySelector("#prodForm");
@@ -129,9 +147,30 @@ function imageThumb(img) {
     : `<img src="${esc(img.url)}" alt="${esc(img.alt || "")}" loading="lazy" />`;
 }
 
+// Pick the URL to preview for a product: prefer the first REAL uploaded image
+// (in position order), falling back to the emoji placeholder only when none of
+// the product's images are real uploads.
+function realImageUrl(images) {
+  if (!Array.isArray(images)) return null;
+  const real = images.find(im => typeof im.url === "string" && im.url && !im.url.startsWith("emoji:"));
+  return real ? real.url : null;
+}
+function primaryImageUrl(p) {
+  return realImageUrl(p.images) || `emoji:${p.emoji || "📦"}`;
+}
+
+// Small row/preview thumbnail for a product (real image or emoji fallback).
+function productThumb(p, cls = "row-thumb") {
+  const url = primaryImageUrl(p);
+  if (url.startsWith("emoji:")) {
+    return `<span class="${cls} ${cls}-emoji">${esc(url.slice(6))}</span>`;
+  }
+  return `<span class="${cls}"><img src="${esc(url)}" alt="${esc(p.name || "")}" loading="lazy" /></span>`;
+}
+
 // Image manager: upload, preview, set-main, delete. Reorder via set-main
 // (promotes an image to primary). Mounted into the product edit modal.
-async function mountImageManager(container, productId) {
+async function mountImageManager(container, productId, onImagesChange) {
   async function refresh() {
     let images;
     try {
@@ -140,6 +179,7 @@ async function mountImageManager(container, productId) {
       container.innerHTML = `<span class="form-error">${esc(e.message)}</span>`;
       return;
     }
+    if (typeof onImagesChange === "function") onImagesChange(images);
     const main = images[0];
     const rest = images.slice(1);
 
@@ -227,6 +267,35 @@ function stockForm(root, product) {
   });
 }
 
+// Columns are shared between the initial render and every filtered re-render.
+const PRODUCT_COLUMNS = [
+  { key: "thumb", label: "", render: r => productThumb(r) },
+  { key: "name", label: "Name", render: r => `<strong>${esc(r.name)}</strong><br><span style="color:var(--muted);font-size:.8rem">${esc(r.brand)}</span>` },
+  { key: "category", label: "Category" },
+  { key: "price", label: "Regular", num: true, render: r => money(r.price) },
+  { key: "sale", label: "Sale", num: true, render: r => {
+      if (r.onSale) return `<span class="sale-price">${money(r.effectivePrice)}</span> <span class="sale-off">${r.discountPercent}% OFF</span>`;
+      return `<span class="muted-dash">—</span>`;
+  }},
+  { key: "stock", label: "Stock", num: true, render: r => {
+      const s = stockStatus(r.stock);
+      return `<span class="stock-badge ${s.className}">${r.stock}</span>`;
+  }},
+  { key: "actions", label: "", render: r => `
+    <div class="row-actions">
+      <button class="icon-action" data-act="stock" data-id="${r.id}">Stock</button>
+      <button class="icon-action" data-act="edit" data-id="${r.id}">Edit</button>
+      <button class="icon-action danger" data-act="delete" data-id="${r.id}">Delete</button>
+    </div>` },
+];
+
+// Case-insensitive match on name, brand, and category.
+function matchesQuery(p, q) {
+  if (!q) return true;
+  const hay = `${p.name || ""} ${p.brand || ""} ${p.category || ""}`.toLowerCase();
+  return hay.includes(q);
+}
+
 export async function renderProducts(root) {
   root.innerHTML = `<p class="admin-status">Loading products…</p>`;
   let products;
@@ -237,63 +306,70 @@ export async function renderProducts(root) {
     return;
   }
 
-  const table = dataTable({
-    columns: [
-      { key: "emoji", label: "", render: r => `<span style="font-size:1.3rem">${esc(r.emoji)}</span>` },
-      { key: "name", label: "Name", render: r => `<strong>${esc(r.name)}</strong><br><span style="color:var(--muted);font-size:.8rem">${esc(r.brand)}</span>` },
-      { key: "category", label: "Category" },
-      { key: "price", label: "Regular", num: true, render: r => money(r.price) },
-      { key: "sale", label: "Sale", num: true, render: r => {
-          if (r.onSale) return `<span class="sale-price">${money(r.effectivePrice)}</span> <span class="sale-off">${r.discountPercent}% OFF</span>`;
-          return `<span class="muted-dash">—</span>`;
-      }},
-      { key: "stock", label: "Stock", num: true, render: r => {
-          const s = stockStatus(r.stock);
-          return `<span class="stock-badge ${s.className}">${r.stock}</span>`;
-      }},
-      { key: "actions", label: "", render: r => `
-        <div class="row-actions">
-          <button class="icon-action" data-act="stock" data-id="${r.id}">Stock</button>
-          <button class="icon-action" data-act="edit" data-id="${r.id}">Edit</button>
-          <button class="icon-action danger" data-act="delete" data-id="${r.id}">Delete</button>
-        </div>` },
-    ],
-    rows: products,
-    rowKey: r => r.id,
-    empty: "No products yet.",
-  });
+  const byId = new Map(products.map(p => [String(p.id), p]));
 
   root.innerHTML = `
     <div class="panel">
       <div class="panel-head">
-        <h2>Products (${products.length})</h2>
+        <h2 id="prodHeading">Products (${products.length})</h2>
         <button class="btn btn-primary btn-sm" id="addProductBtn">+ Add product</button>
       </div>
-      ${table}
+      <div class="table-toolbar">
+        <div class="search-field">
+          <span class="search-field-icon" aria-hidden="true">🔍</span>
+          <input type="search" id="prodSearch" class="search-field-input"
+                 placeholder="Search by name, brand or category…" autocomplete="off" aria-label="Search products" />
+        </div>
+      </div>
+      <div id="prodTableWrap">${dataTable({ columns: PRODUCT_COLUMNS, rows: products, rowKey: r => r.id, empty: "No products yet." })}</div>
     </div>`;
 
-  root.querySelector("#addProductBtn").addEventListener("click", () => productForm(root, null));
+  const tableWrap = root.querySelector("#prodTableWrap");
+  const heading = root.querySelector("#prodHeading");
+  const searchInput = root.querySelector("#prodSearch");
 
-  const byId = new Map(products.map(p => [String(p.id), p]));
-  root.querySelectorAll("[data-act]").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const product = byId.get(btn.dataset.id);
-      const act = btn.dataset.act;
-      if (act === "edit") productForm(root, product);
-      else if (act === "stock") stockForm(root, product);
-      else if (act === "delete") {
-        const ok = await confirmDialog({
-          title: "Delete product",
-          message: `Delete "${product.name}"? This cannot be undone.`,
-          confirmText: "Delete", danger: true,
-        });
-        if (!ok) return;
-        try {
-          await api.deleteProduct(product.id);
-          toast("Product deleted", "success");
-          reload(root);
-        } catch (e) { toast(e.message, "error"); }
-      }
+  // Wire row action buttons (re-run after each re-render).
+  function wireRowActions() {
+    tableWrap.querySelectorAll("[data-act]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const product = byId.get(btn.dataset.id);
+        const act = btn.dataset.act;
+        if (act === "edit") productForm(root, product);
+        else if (act === "stock") stockForm(root, product);
+        else if (act === "delete") {
+          const ok = await confirmDialog({
+            title: "Delete product",
+            message: `Delete "${product.name}"? This cannot be undone.`,
+            confirmText: "Delete", danger: true,
+          });
+          if (!ok) return;
+          try {
+            await api.deleteProduct(product.id);
+            toast("Product deleted", "success");
+            reload(root);
+          } catch (e) { toast(e.message, "error"); }
+        }
+      });
     });
-  });
+  }
+
+  // Instant, client-side filtering (the full catalog is already loaded).
+  function applyFilter() {
+    const q = searchInput.value.trim().toLowerCase();
+    const filtered = products.filter(p => matchesQuery(p, q));
+    heading.textContent = q
+      ? `Products (${filtered.length} of ${products.length})`
+      : `Products (${products.length})`;
+    tableWrap.innerHTML = dataTable({
+      columns: PRODUCT_COLUMNS,
+      rows: filtered,
+      rowKey: r => r.id,
+      empty: q ? `No products match “${esc(searchInput.value.trim())}”.` : "No products yet.",
+    });
+    wireRowActions();
+  }
+
+  searchInput.addEventListener("input", applyFilter);
+  root.querySelector("#addProductBtn").addEventListener("click", () => productForm(root, null));
+  wireRowActions();
 }

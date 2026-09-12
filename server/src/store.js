@@ -703,14 +703,35 @@ export async function markAdminRead(conversationId) {
 // Product reviews (public — no account required)
 // ============================================================================
 function mapReview(row) {
+  // NOTE: reviewer_email is intentionally NOT included — email is never exposed
+  // publicly. Every stored review has passed purchase verification, so we mark
+  // it verifiedPurchase for the storefront badge.
   return {
     id: row.id,
     productId: row.product_id,
     reviewerName: row.reviewer_name,
     rating: row.rating,
     comment: row.comment,
+    verifiedPurchase: true,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
   };
+}
+
+// Purchase verification: has this email bought this product in an order that
+// actually progressed past payment (not awaiting_payment/pending/cancelled)?
+// Matches on the order's snapshot email (ship_email), case-insensitive.
+export async function hasPurchasedProduct(email, productId) {
+  const { rows } = await query(
+    `SELECT 1
+       FROM orders o
+       JOIN order_items oi ON oi.order_id = o.id
+      WHERE lower(o.ship_email) = lower($1)
+        AND oi.product_id = $2
+        AND o.status NOT IN ('awaiting_payment', 'pending', 'cancelled')
+      LIMIT 1`,
+    [email, Number(productId)]
+  );
+  return rows.length > 0;
 }
 
 // List reviews for a product, newest first.
@@ -733,12 +754,22 @@ export async function getReviewStats(productId) {
   return { count, average: avg };
 }
 
-// Create a review (validated in the route). Returns the new review.
-export async function createReview(productId, { reviewerName, rating, comment }) {
+// Create OR update a review (validated + purchase-verified in the route).
+// One review per email per product: a repeat submission from the same email
+// updates the existing review (name/rating/comment/date) rather than duplicating.
+// Returns { review, updated } where `updated` is true when an existing row was replaced.
+export async function createReview(productId, { reviewerName, email, rating, comment }) {
   const { rows } = await query(
-    `INSERT INTO product_reviews (product_id, reviewer_name, rating, comment)
-     VALUES ($1,$2,$3,$4) RETURNING *`,
-    [Number(productId), reviewerName, rating, comment]
+    `INSERT INTO product_reviews (product_id, reviewer_name, reviewer_email, rating, comment)
+     VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (product_id, lower(reviewer_email)) DO UPDATE
+       SET reviewer_name = EXCLUDED.reviewer_name,
+           rating        = EXCLUDED.rating,
+           comment       = EXCLUDED.comment,
+           created_at     = now()
+     RETURNING *, (xmax <> 0) AS was_update`,
+    [Number(productId), reviewerName, email, rating, comment]
   );
-  return mapReview(rows[0]);
+  const row = rows[0];
+  return { review: mapReview(row), updated: row.was_update === true };
 }

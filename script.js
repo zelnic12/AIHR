@@ -237,8 +237,12 @@ function renderProductDetail(product) {
 
         <form id="reviewForm" class="review-form">
           <h4>Write a review</h4>
+          <p class="review-note">Reviews are open to verified purchasers. Use the email from your order.</p>
           <div class="review-form-row">
             <input id="reviewName" class="review-input" type="text" maxlength="80" placeholder="Your name" required />
+            <input id="reviewEmail" class="review-input" type="email" placeholder="Email used at checkout" required />
+          </div>
+          <div class="review-form-row">
             <div class="star-input" id="starInput" role="radiogroup" aria-label="Your rating">
               ${[1,2,3,4,5].map(n => `<button type="button" class="star-btn" data-star="${n}" aria-label="${n} star${n>1?"s":""}">★</button>`).join("")}
             </div>
@@ -283,7 +287,7 @@ function setupReviews(product) {
     listEl.innerHTML = reviews.map(r => `
       <div class="review-item">
         <div class="review-item-head">
-          <span class="review-author">${esc(r.reviewerName)}</span>
+          <span class="review-author">${esc(r.reviewerName)}${r.verifiedPurchase ? ` <span class="verified-badge" title="Verified purchase">✓ Verified Purchase</span>` : ""}</span>
           <span class="review-date">${esc(timeAgo(r.createdAt))}</span>
         </div>
         ${starRow(r.rating)}
@@ -325,8 +329,10 @@ function setupReviews(product) {
     const err = $("#reviewError");
     err.hidden = true;
     const reviewerName = $("#reviewName").value.trim();
+    const email = $("#reviewEmail").value.trim();
     const comment = $("#reviewComment").value.trim();
     if (!reviewerName) { err.textContent = "Please enter your name."; err.hidden = false; return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { err.textContent = "Please enter the email you used at checkout."; err.hidden = false; return; }
     if (!selectedStars) { err.textContent = "Please select a star rating."; err.hidden = false; return; }
     if (!comment) { err.textContent = "Please write a short comment."; err.hidden = false; return; }
     const btn = $("#reviewSubmit");
@@ -335,7 +341,7 @@ function setupReviews(product) {
       const res = await fetch(`${API_BASE}/products/${product.id}/reviews`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reviewerName, rating: selectedStars, comment }),
+        body: JSON.stringify({ reviewerName, email, rating: selectedStars, comment }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error((data.details && data.details.join(" ")) || data.error || "Could not submit review.");

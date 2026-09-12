@@ -146,12 +146,16 @@ router.post("/:id/reviews", async (req, res, next) => {
     if (!product) return res.status(404).json({ error: "Product not found" });
 
     const reviewerName = typeof req.body?.reviewerName === "string" ? req.body.reviewerName.trim() : "";
+    const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
     const comment = typeof req.body?.comment === "string" ? req.body.comment.trim() : "";
     const rating = Number(req.body?.rating);
 
     const errors = [];
     if (reviewerName.length < 1 || reviewerName.length > REVIEW_NAME_MAX) {
       errors.push(`reviewerName must be 1–${REVIEW_NAME_MAX} characters`);
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errors.push("a valid email is required");
     }
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
       errors.push("rating must be an integer between 1 and 5");
@@ -161,8 +165,16 @@ router.post("/:id/reviews", async (req, res, next) => {
     }
     if (errors.length) return res.status(400).json({ error: "Validation failed", details: errors });
 
-    const review = await store.createReview(req.params.id, { reviewerName, rating, comment });
-    res.status(201).json(review);
+    // Purchase verification (server-side; never trust a client flag): the email
+    // must have a non-cancelled, past-payment order containing this product.
+    const purchased = await store.hasPurchasedProduct(email, req.params.id);
+    if (!purchased) {
+      return res.status(403).json({ error: "Only customers who have purchased this product can leave a review." });
+    }
+
+    // One review per email per product — a repeat submission edits the existing one.
+    const { review, updated } = await store.createReview(req.params.id, { reviewerName, email, rating, comment });
+    res.status(updated ? 200 : 201).json(review);
   } catch (err) { next(err); }
 });
 

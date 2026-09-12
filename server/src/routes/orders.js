@@ -51,7 +51,8 @@ router.get("/:id", requireAuth, async (req, res, next) => {
 });
 
 // PATCH /api/orders/:id/status — update fulfilment status (admin only)
-const ORDER_STATUSES = ["pending", "paid", "shipped", "cancelled"];
+// Sequential flow: needs_shipping → shipped → completed. Cancelled is separate.
+const ORDER_STATUSES = ["needs_shipping", "shipped", "completed", "cancelled"];
 router.patch("/:id/status", requireAuth, async (req, res, next) => {
   try {
     const { status } = req.body || {};
@@ -143,7 +144,9 @@ router.post("/", async (req, res, next) => {
       },
       items: lineItems,
       amounts: { subtotal, discount, shipping, tax, total },
-      status: "paid", // payment handled by the gateway integration (see frontend PaymentProvider)
+      // Order is placed & paid (payment handled on the frontend PaymentProvider);
+      // it now enters the fulfilment flow awaiting shipment.
+      status: "needs_shipping",
     };
 
     // Persist the order (customer upsert + items + stock decrement, atomically).

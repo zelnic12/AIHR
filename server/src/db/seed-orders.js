@@ -68,7 +68,8 @@ export async function seedOrders(count = 120) {
       const customerId = cust[0].id;
 
       const id = orderId(created);
-      const status = pick(["paid", "paid", "paid", "shipped", "pending", "cancelled"]);
+      // Weighted toward the earlier stages; matches the new fulfilment flow.
+      const status = pick(["needs_shipping", "needs_shipping", "shipped", "shipped", "completed", "cancelled"]);
 
       await client.query(
         `INSERT INTO orders

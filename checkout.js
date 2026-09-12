@@ -169,7 +169,8 @@ function buildOrder(customer, totals) {
       tax: totals.tax,
       total: totals.total,
     },
-    status: "pending",
+    // Informational only — the server is authoritative and sets the real status.
+    status: "needs_shipping",
   };
 }
 

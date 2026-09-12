@@ -102,8 +102,8 @@ CREATE TABLE IF NOT EXISTS orders (
   shipping      NUMERIC(10,2) NOT NULL CHECK (shipping >= 0),
   tax           NUMERIC(10,2) NOT NULL CHECK (tax >= 0),
   total         NUMERIC(10,2) NOT NULL CHECK (total >= 0),
-  status        TEXT        NOT NULL DEFAULT 'pending'
-                  CHECK (status IN ('pending', 'paid', 'shipped', 'cancelled')),
+  status        TEXT        NOT NULL DEFAULT 'needs_shipping'
+                  CHECK (status IN ('needs_shipping', 'shipped', 'completed', 'cancelled')),
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

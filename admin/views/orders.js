@@ -5,10 +5,30 @@ import { dataTable } from "../components/dataTable.js";
 import { openModal } from "../components/modal.js";
 import { toast } from "../components/toast.js";
 
-const STATUSES = ["pending", "paid", "shipped", "cancelled"];
+// Sequential fulfilment flow (in stage order), plus Cancelled as a separate state.
+const STATUSES = ["needs_shipping", "shipped", "completed", "cancelled"];
+
+// Human-readable labels for each status value.
+const STATUS_LABELS = {
+  needs_shipping: "Needs Shipping",
+  shipped: "Shipped",
+  completed: "Order Completed",
+  cancelled: "Cancelled",
+  // Legacy fallbacks (should be migrated away, but display sensibly if seen).
+  pending: "Needs Shipping",
+  paid: "Needs Shipping",
+};
+
+function statusLabel(status) {
+  return STATUS_LABELS[status] || status;
+}
 
 function statusBadge(status) {
-  return `<span class="badge ${esc(status)}">${esc(status)}</span>`;
+  // Class uses the (normalized) status value; label is the friendly text.
+  const cls = ["needs_shipping", "shipped", "completed", "cancelled"].includes(status)
+    ? status
+    : (status === "pending" || status === "paid" ? "needs_shipping" : status);
+  return `<span class="badge ${esc(cls)}">${esc(statusLabel(status))}</span>`;
 }
 
 // Open (or download) the invoice PDF as a blob so the admin auth header is sent.
@@ -62,8 +82,14 @@ function orderDetail(root, order) {
       <div class="form-field" style="margin-top:1.2rem">
         <label>Update status</label>
         <select id="statusSel">
-          ${STATUSES.map(s => `<option value="${s}" ${s === order.status ? "selected" : ""}>${s}</option>`).join("")}
+          ${STATUSES.map(s => {
+            // Match the current status, normalizing any legacy value to the new flow.
+            const normalized = (s === "needs_shipping" && (order.status === "pending" || order.status === "paid")) ? order.status : null;
+            const selected = s === order.status || normalized ? "selected" : "";
+            return `<option value="${s}" ${selected}>${statusLabel(s)}</option>`;
+          }).join("")}
         </select>
+        <span class="status-flow-hint">Flow: Needs Shipping → Shipped → Order Completed</span>
       </div>`,
     footHTML: `
       <button class="btn btn-ghost" data-close>Close</button>

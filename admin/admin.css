@@ -85,10 +85,13 @@
 
 /* ---- Badges / pills ---- */
 .badge { display: inline-block; font-size: .7rem; font-weight: 700; padding: .22rem .55rem; border-radius: var(--radius-sm); text-transform: uppercase; letter-spacing: .02em; }
-.badge.paid { background: #e8f6ee; color: var(--success); }
-.badge.pending { background: #fff7e6; color: #b26a00; }
-.badge.shipped { background: var(--primary-light); color: var(--primary); }
-.badge.cancelled { background: #fdecec; color: var(--danger); }
+/* Order fulfilment statuses: needs_shipping → shipped → completed (+ cancelled) */
+.badge.needs_shipping { background: #fff7e6; color: #b26a00; }   /* amber — awaiting action */
+.badge.shipped { background: var(--primary-light); color: var(--primary); }  /* red — in transit */
+.badge.completed { background: #e8f6ee; color: var(--success); }  /* green — done */
+.badge.cancelled { background: #fdecec; color: var(--danger); }   /* red — cancelled */
+/* Legacy fallbacks (pre-migration) so a stray value still renders sensibly */
+.badge.paid, .badge.pending { background: #fff7e6; color: #b26a00; }
 .stock-badge { font-weight: 700; font-variant-numeric: tabular-nums; }
 .stock-badge.ok { color: var(--success); }
 .stock-badge.low { color: #b26a00; }
@@ -271,3 +274,7 @@ button.admin-back {
 .form-preview-meta { display: flex; flex-direction: column; }
 .form-preview-label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-secondary); }
 .form-preview-name { font-weight: 600; color: var(--text-primary); }
+
+
+/* Order status flow hint under the update dropdown */
+.status-flow-hint { display: block; margin-top: .4rem; font-size: .75rem; color: var(--text-secondary); }

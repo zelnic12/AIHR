@@ -69,17 +69,24 @@ function orderDetail(root, order) {
     </tr>`).join("");
 
   const c = order.customer;
+  const isPickup = order.fulfillmentMethod === "pickup";
+  // For pickup, there's no shipping address; show a pickup note instead.
+  const addressLine = isPickup
+    ? `<em>Self pickup at store — no shipping address</em>`
+    : `${esc(c.address)}, ${esc(c.city)} ${esc(c.postal)}, ${esc(c.country)}`;
   openModal({
     title: `Order ${order.id}`,
     bodyHTML: `
-      <p style="color:var(--muted);margin-bottom:1rem">${fmtDate(order.createdAt, true)} · ${statusBadge(order.status)}</p>
+      <p style="color:var(--muted);margin-bottom:1rem">${fmtDate(order.createdAt, true)} · ${statusBadge(order.status)}
+        · <span class="fulfil-pill ${isPickup ? "pickup" : "delivery"}">${isPickup ? "🏬 Self Pickup" : "🚚 Delivery"}</span></p>
       <div class="panel" style="margin-bottom:1rem">
         <strong>${esc(c.name)}</strong><br>
         <span style="color:var(--muted);font-size:.88rem">
           ${esc(c.email)} · ${esc(c.phone)}<br>
-          ${esc(c.address)}, ${esc(c.city)} ${esc(c.postal)}, ${esc(c.country)}
+          ${addressLine}
         </span>
       </div>
+      ${isPickup ? `<div class="pickup-note" style="margin-bottom:1rem"><strong>Pickup</strong><span>Customer collects this order in person at the store.</span></div>` : ""}
       <div class="table-scroll">
         <table class="data-table">
           <thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Total</th></tr></thead>
@@ -136,25 +143,46 @@ function orderDetail(root, order) {
 
 // Kanban board columns, in pipeline order. Cancelled is kept separate so it
 // doesn't mix with the active pipeline.
+// Columns keep the 3-stage pipeline + Cancelled (+ Awaiting Payment). Titles
+// note both flows since a column can hold delivery and pickup orders; each
+// card shows its own adapted stage label.
 const BOARD_COLUMNS = [
   { status: "awaiting_payment", title: "Awaiting Payment" },
-  { status: "needs_shipping", title: "Needs Shipping" },
-  { status: "shipped", title: "Shipped" },
+  { status: "needs_shipping", title: "Needs Shipping / Ready for Pickup" },
+  { status: "shipped", title: "Shipped / Picked Up" },
   { status: "completed", title: "Order Completed" },
   { status: "cancelled", title: "Cancelled" },
 ];
 
-// The primary "advance" action available on a card for a given status.
-// null = no forward action (terminal / awaiting external event).
-const NEXT_ACTION = {
-  awaiting_payment: null,   // advances to needs_shipping only when payment settles
-  needs_shipping: { to: "shipped", label: "Mark as Shipped" },
-  shipped: { to: "completed", label: "Mark Completed" },
-  completed: null,
-  cancelled: null,
-};
-
 const VALID_BOARD = ["awaiting_payment", "needs_shipping", "shipped", "completed", "cancelled"];
+
+// The primary "advance" action for a status, ADAPTED to the fulfillment method.
+// null = no forward action (terminal / awaiting external event).
+// The same 3-stage pipeline is reused; only the labels differ for pickup.
+function nextAction(status, method) {
+  const pickup = method === "pickup";
+  switch (status) {
+    case "needs_shipping": // = "Ready for Pickup" for pickup orders
+      return { to: "shipped", label: pickup ? "Mark Picked Up" : "Mark as Shipped" };
+    case "shipped":        // = "Picked Up" for pickup orders
+      return { to: "completed", label: "Mark Completed" };
+    default:
+      return null; // awaiting_payment / completed / cancelled
+  }
+}
+
+// Per-card stage label, adapted to the fulfillment method.
+function stageLabelFor(status, method) {
+  const pickup = method === "pickup";
+  switch (status) {
+    case "awaiting_payment": return "Awaiting Payment";
+    case "needs_shipping": return pickup ? "Ready for Pickup" : "Needs Shipping";
+    case "shipped": return pickup ? "Picked Up" : "Shipped";
+    case "completed": return "Order Completed";
+    case "cancelled": return "Cancelled";
+    default: return status;
+  }
+}
 
 // Normalize any legacy status onto a board column so no order is ever missing.
 function boardStatus(status) {
@@ -165,8 +193,12 @@ function boardStatus(status) {
 function orderCard(o) {
   const itemCount = o.items.reduce((s, i) => s + i.qty, 0);
   const bs = boardStatus(o.status);
-  const next = NEXT_ACTION[bs];
+  const method = o.fulfillmentMethod === "pickup" ? "pickup" : "delivery";
+  const next = nextAction(bs, method);
   const canCancel = bs === "awaiting_payment" || bs === "needs_shipping" || bs === "shipped";
+  // A small per-card pill shows the fulfillment type + its adapted stage label,
+  // so delivery and pickup orders read correctly within the shared columns.
+  const methodPill = `<span class="fulfil-pill ${method}">${method === "pickup" ? "🏬 Pickup" : "🚚 Delivery"}</span>`;
   return `
     <article class="order-card" data-card="${esc(o.id)}" tabindex="0" role="button" aria-label="Open order ${esc(o.id)}">
       <div class="order-card-top">
@@ -179,6 +211,7 @@ function orderCard(o) {
         <span>·</span>
         <span>${itemCount} item${itemCount === 1 ? "" : "s"}</span>
       </div>
+      <div class="order-card-tags">${methodPill}<span class="stage-pill">${esc(stageLabelFor(bs, method))}</span></div>
       ${(next || canCancel) ? `<div class="order-card-actions">
         ${next ? `<button class="btn btn-primary btn-xs" data-move="${esc(o.id)}" data-to="${next.to}">${next.label}</button>` : ""}
         ${canCancel ? `<button class="icon-action danger btn-xs" data-move="${esc(o.id)}" data-to="cancelled">Cancel</button>` : ""}

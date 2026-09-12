@@ -122,4 +122,48 @@ router.delete("/:id", requireAuth, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ---- Reviews (public — no auth) ----
+const REVIEW_NAME_MAX = 80;
+const REVIEW_COMMENT_MAX = 2000;
+
+// GET /api/products/:id/reviews — list reviews (+ stats)
+router.get("/:id/reviews", async (req, res, next) => {
+  try {
+    const product = await store.getProduct(req.params.id);
+    if (!product) return res.status(404).json({ error: "Product not found" });
+    const [reviews, stats] = await Promise.all([
+      store.getProductReviews(req.params.id),
+      store.getReviewStats(req.params.id),
+    ]);
+    res.json({ reviews, stats });
+  } catch (err) { next(err); }
+});
+
+// POST /api/products/:id/reviews — create a review (public, validated)
+router.post("/:id/reviews", async (req, res, next) => {
+  try {
+    const product = await store.getProduct(req.params.id);
+    if (!product) return res.status(404).json({ error: "Product not found" });
+
+    const reviewerName = typeof req.body?.reviewerName === "string" ? req.body.reviewerName.trim() : "";
+    const comment = typeof req.body?.comment === "string" ? req.body.comment.trim() : "";
+    const rating = Number(req.body?.rating);
+
+    const errors = [];
+    if (reviewerName.length < 1 || reviewerName.length > REVIEW_NAME_MAX) {
+      errors.push(`reviewerName must be 1–${REVIEW_NAME_MAX} characters`);
+    }
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      errors.push("rating must be an integer between 1 and 5");
+    }
+    if (comment.length < 1 || comment.length > REVIEW_COMMENT_MAX) {
+      errors.push(`comment must be 1–${REVIEW_COMMENT_MAX} characters`);
+    }
+    if (errors.length) return res.status(400).json({ error: "Validation failed", details: errors });
+
+    const review = await store.createReview(req.params.id, { reviewerName, rating, comment });
+    res.status(201).json(review);
+  } catch (err) { next(err); }
+});
+
 export default router;

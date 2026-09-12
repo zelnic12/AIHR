@@ -19,7 +19,15 @@ function productForm(root, product = null) {
       <form id="prodForm">
         ${isEdit ? `<div class="form-preview">
           <div class="form-preview-thumb" id="activeImagePreview">${productThumb(p, "preview-thumb")}</div>
-          <div class="form-preview-meta"><span class="form-preview-label">Active image</span><span class="form-preview-name">${esc(p.name || "")}</span></div>
+          <div class="form-preview-meta">
+            <span class="form-preview-label">Active image</span>
+            <span class="form-preview-name">${esc(p.name || "")}</span>
+            <span class="form-preview-reviews">${
+              p.reviewCount > 0
+                ? `★ ${Number(p.avgRating).toFixed(1)} · ${p.reviewCount} review${p.reviewCount === 1 ? "" : "s"}`
+                : "No reviews yet"
+            }</span>
+          </div>
         </div>` : ""}
         <div class="form-grid">
           <div class="form-field full"><label>Name *</label><input name="name" value="${esc(p.name || "")}" required /></div>

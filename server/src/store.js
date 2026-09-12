@@ -29,6 +29,9 @@ function mapProduct(row) {
     stock: row.stock,
     description: row.description,
     specs: row.specs || {},
+    // Review aggregates (from PRODUCT_SELECT join). reviewCount 0 when none.
+    reviewCount: row.review_count != null ? Number(row.review_count) : 0,
+    avgRating: row.avg_rating != null ? Math.round(Number(row.avg_rating) * 10) / 10 : 0,
   };
   if (row.images) {
     product.images = row.images.map(img => ({ id: img.id, url: img.url, alt: img.alt }));
@@ -77,7 +80,9 @@ const PRODUCT_SELECT = `
            (SELECT json_agg(json_build_object('id', pi.id, 'url', pi.url, 'alt', pi.alt) ORDER BY pi.position, pi.id)
               FROM product_images pi WHERE pi.product_id = p.id),
            '[]'::json
-         ) AS images
+         ) AS images,
+         (SELECT COUNT(*) FROM product_reviews r WHERE r.product_id = p.id) AS review_count,
+         (SELECT AVG(r.rating) FROM product_reviews r WHERE r.product_id = p.id) AS avg_rating
     FROM products p`;
 
 export async function getProducts() {
@@ -168,6 +173,7 @@ function mapOrder(orderRow, itemRows) {
     paymentToken: orderRow.payment_token ?? null,
     paymentRedirectUrl: orderRow.payment_redirect_url ?? null,
     paymentTxnId: orderRow.payment_txn_id ?? null,
+    fulfillmentMethod: orderRow.fulfillment_method ?? "delivery",
   };
 }
 
@@ -238,14 +244,15 @@ export async function createOrder(order) {
       `INSERT INTO orders
          (id, customer_id, ship_name, ship_email, ship_phone, ship_address,
           ship_city, ship_postal, ship_country, subtotal, discount, shipping, tax, total,
-          status, created_at, invoice_no, access_token)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+          status, created_at, invoice_no, access_token, fulfillment_method)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
       [
         order.id, customerId, c.name, c.email, c.phone, c.address,
         c.city, c.postal, c.country,
         order.amounts.subtotal, order.amounts.discount ?? 0, order.amounts.shipping,
         order.amounts.tax, order.amounts.total,
         order.status, order.createdAt, order.invoiceNo ?? null, order.accessToken ?? null,
+        order.fulfillmentMethod === "pickup" ? "pickup" : "delivery",
       ]
     );
 
@@ -689,4 +696,49 @@ export async function getConversation(id) {
 // Clear the admin's unread counter (they've viewed the customer messages).
 export async function markAdminRead(conversationId) {
   await query("UPDATE chat_conversations SET admin_unread = 0 WHERE id = $1", [Number(conversationId)]);
+}
+
+
+// ============================================================================
+// Product reviews (public — no account required)
+// ============================================================================
+function mapReview(row) {
+  return {
+    id: row.id,
+    productId: row.product_id,
+    reviewerName: row.reviewer_name,
+    rating: row.rating,
+    comment: row.comment,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+  };
+}
+
+// List reviews for a product, newest first.
+export async function getProductReviews(productId) {
+  const { rows } = await query(
+    "SELECT * FROM product_reviews WHERE product_id = $1 ORDER BY created_at DESC, id DESC",
+    [Number(productId)]
+  );
+  return rows.map(mapReview);
+}
+
+// Average rating + count for a product.
+export async function getReviewStats(productId) {
+  const { rows } = await query(
+    "SELECT COUNT(*)::int AS count, AVG(rating) AS avg FROM product_reviews WHERE product_id = $1",
+    [Number(productId)]
+  );
+  const count = rows[0].count;
+  const avg = rows[0].avg == null ? 0 : Math.round(Number(rows[0].avg) * 10) / 10;
+  return { count, average: avg };
+}
+
+// Create a review (validated in the route). Returns the new review.
+export async function createReview(productId, { reviewerName, rating, comment }) {
+  const { rows } = await query(
+    `INSERT INTO product_reviews (product_id, reviewer_name, rating, comment)
+     VALUES ($1,$2,$3,$4) RETURNING *`,
+    [Number(productId), reviewerName, rating, comment]
+  );
+  return mapReview(rows[0]);
 }

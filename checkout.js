@@ -3,6 +3,10 @@ const VE = window.VoltEdge;
 const $ = sel => document.querySelector(sel);
 const API_BASE = "/api";
 
+// Selected fulfillment method: 'delivery' (default) or 'pickup'. Pickup skips
+// the shipping address and the shipping fee (server recomputes authoritatively).
+let fulfillmentMethod = "delivery";
+
 /* =========================================================================
  * Payment abstraction
  * -------------------------------------------------------------------------
@@ -65,7 +69,13 @@ const activeProvider = MockPaymentProvider;
  * Order summary
  * ========================================================================= */
 function renderSummary() {
-  const { entries, subtotal, shipping, tax, total } = VE.computeTotals();
+  const base = VE.computeTotals();
+  const { entries, subtotal, tax } = base;
+  // Pickup → no shipping fee; recompute the total for display. (The server
+  // independently recomputes the authoritative total on order placement.)
+  const isPickup = fulfillmentMethod === "pickup";
+  const shipping = isPickup ? 0 : base.shipping;
+  const total = isPickup ? +(subtotal + tax).toFixed(2) : base.total;
 
   // Empty cart: hide the form, show a notice.
   if (entries.length === 0) {
@@ -88,6 +98,9 @@ function renderSummary() {
   `).join("");
 
   $("#sumSubtotal").textContent = VE.money(subtotal);
+  // Hide the shipping row entirely for pickup (no shipping fee at all).
+  const shipRow = $("#sumShipRow");
+  if (shipRow) shipRow.hidden = isPickup;
   $("#sumShipping").textContent = shipping === 0 ? "Free" : VE.money(shipping);
   $("#sumShipLabel").textContent =
     subtotal > 0 && subtotal < VE.CONFIG.FREE_SHIPPING_THRESHOLD
@@ -132,13 +145,19 @@ function setFieldError(fieldId, message) {
   }
 }
 
+// Address fields are only validated for delivery orders.
+const ADDRESS_FIELDS = ["address", "city", "postal", "country"];
+
 function collectAndValidate() {
   const data = {};
   let firstInvalid = null;
+  const isPickup = fulfillmentMethod === "pickup";
 
   for (const [key, id] of Object.entries(FIELD_IDS)) {
     const value = document.getElementById(id).value;
     data[key] = value.trim();
+    // Skip address validation for pickup (fields are hidden).
+    if (isPickup && ADDRESS_FIELDS.includes(key)) { setFieldError(id, ""); continue; }
     const result = VALIDATORS[key](value);
     if (result !== true) {
       setFieldError(id, result);
@@ -213,7 +232,7 @@ async function handleSubmit(e) {
     const res = await fetch(`${API_BASE}/orders`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ customer: order.customer, items: order.items }),
+      body: JSON.stringify({ customer: order.customer, items: order.items, fulfillmentMethod }),
     });
 
     const body = await res.json().catch(() => ({}));
@@ -332,8 +351,21 @@ function showConfirmation(order, { pending = false } = {}) {
   $("#confirmOrderId").textContent = order.id;
   $("#confirmTotal").textContent = VE.money(order.amounts.total);
   $("#confirmEmail").textContent = c.email;
-  $("#confirmAddress").textContent =
-    `${c.address}, ${c.city} ${c.postal}, ${c.country}`;
+
+  // Fulfillment method: delivery shows the shipping address; pickup shows a
+  // pickup note and hides the address row.
+  const isPickup = (order.fulfillmentMethod || fulfillmentMethod) === "pickup";
+  $("#confirmMethod").textContent = isPickup ? "Self Pickup at Store" : "Delivery";
+  const addrRow = $("#confirmAddressRow");
+  const pickupNote = $("#confirmPickupNote");
+  if (isPickup) {
+    if (addrRow) addrRow.hidden = true;
+    if (pickupNote) pickupNote.hidden = false;
+  } else {
+    if (addrRow) addrRow.hidden = false;
+    if (pickupNote) pickupNote.hidden = true;
+    $("#confirmAddress").textContent = `${c.address}, ${c.city} ${c.postal}, ${c.country}`;
+  }
 
   // Tailor the heading/subtext for a pending QRIS payment vs. a completed one.
   const titleEl = $("#confirmTitle");
@@ -385,6 +417,25 @@ async function init() {
   const totals = renderSummary();
   activeProvider.mount($("#paymentMount"), { totals });
   $("#checkoutForm").addEventListener("submit", handleSubmit);
+
+  // Fulfillment method toggle: show/hide shipping address, recompute summary.
+  const shippingSection = $("#shippingSection");
+  const pickupNote = $("#pickupNote");
+  document.querySelectorAll('input[name="fulfillment"]').forEach(radio => {
+    radio.addEventListener("change", () => {
+      fulfillmentMethod = radio.value === "pickup" ? "pickup" : "delivery";
+      const isPickup = fulfillmentMethod === "pickup";
+      // Toggle selected styling.
+      document.querySelectorAll(".fulfillment-opt").forEach(opt =>
+        opt.classList.toggle("selected", opt.dataset.method === fulfillmentMethod));
+      // Hide the shipping address section + show the pickup note.
+      if (shippingSection) shippingSection.hidden = isPickup;
+      if (pickupNote) pickupNote.hidden = !isPickup;
+      // Clear any address errors when switching to pickup.
+      if (isPickup) ADDRESS_FIELDS.forEach(k => setFieldError(FIELD_IDS[k], ""));
+      renderSummary();
+    });
+  });
 
   // Clear a field's error as the user corrects it.
   Object.values(FIELD_IDS).forEach(id => {

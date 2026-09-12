@@ -17,16 +17,20 @@ const CONFIG = {
 
 const round2 = n => Math.round(n * 100) / 100;
 
-function validateCustomer(c) {
+function validateCustomer(c, method = "delivery") {
   const errors = [];
   if (!c || typeof c !== "object") return ["customer object is required"];
+  // Contact fields are always required.
   if (typeof c.name !== "string" || c.name.trim().length < 2) errors.push("customer.name is required");
   if (typeof c.email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email)) errors.push("valid customer.email is required");
   if (typeof c.phone !== "string" || c.phone.replace(/\D/g, "").length < 7) errors.push("valid customer.phone is required");
-  if (typeof c.address !== "string" || c.address.trim().length < 4) errors.push("customer.address is required");
-  if (typeof c.city !== "string" || c.city.trim().length < 2) errors.push("customer.city is required");
-  if (typeof c.postal !== "string" || c.postal.trim().length < 3) errors.push("customer.postal is required");
-  if (typeof c.country !== "string" || c.country.trim().length < 2) errors.push("customer.country is required");
+  // Shipping address is only required for delivery orders (pickup skips it).
+  if (method === "delivery") {
+    if (typeof c.address !== "string" || c.address.trim().length < 4) errors.push("customer.address is required");
+    if (typeof c.city !== "string" || c.city.trim().length < 2) errors.push("customer.city is required");
+    if (typeof c.postal !== "string" || c.postal.trim().length < 3) errors.push("customer.postal is required");
+    if (typeof c.country !== "string" || c.country.trim().length < 2) errors.push("customer.country is required");
+  }
   return errors;
 }
 
@@ -71,8 +75,11 @@ router.post("/", async (req, res, next) => {
   try {
     const { customer, items } = req.body || {};
 
-    // Validate customer.
-    const customerErrors = validateCustomer(customer);
+    // Fulfillment method — 'pickup' skips the shipping address + shipping fee.
+    const fulfillmentMethod = req.body?.fulfillmentMethod === "pickup" ? "pickup" : "delivery";
+
+    // Validate customer (address requirements relaxed for pickup).
+    const customerErrors = validateCustomer(customer, fulfillmentMethod);
     if (customerErrors.length) {
       return res.status(400).json({ error: "Validation failed", details: customerErrors });
     }
@@ -123,7 +130,11 @@ router.post("/", async (req, res, next) => {
     const subtotal = round2(lineItems.reduce((s, li) => s + li.price * li.qty, 0));
     // Discount = total savings vs. regular price (informational; already reflected in subtotal).
     const discount = round2(lineItems.reduce((s, li) => s + (li.regularPrice - li.price) * li.qty, 0));
-    const shipping = subtotal === 0 ? 0 : (subtotal >= CONFIG.FREE_SHIPPING_THRESHOLD ? 0 : CONFIG.SHIPPING_FEE);
+    // Pickup orders are collected in-store → NO shipping fee. Delivery uses the
+    // usual rule (free over threshold, else flat fee). Computed server-side.
+    const shipping = fulfillmentMethod === "pickup"
+      ? 0
+      : (subtotal === 0 ? 0 : (subtotal >= CONFIG.FREE_SHIPPING_THRESHOLD ? 0 : CONFIG.SHIPPING_FEE));
     const tax = round2(subtotal * CONFIG.TAX_RATE);
     const total = round2(subtotal + shipping + tax);
 
@@ -138,11 +149,13 @@ router.post("/", async (req, res, next) => {
         name: customer.name.trim(),
         email: customer.email.trim(),
         phone: customer.phone.trim(),
-        address: customer.address.trim(),
-        city: customer.city.trim(),
-        postal: customer.postal.trim(),
-        country: customer.country.trim(),
+        // Address fields are optional for pickup → default to empty strings.
+        address: (customer.address || "").trim(),
+        city: (customer.city || "").trim(),
+        postal: (customer.postal || "").trim(),
+        country: (customer.country || "").trim(),
       },
+      fulfillmentMethod,
       items: lineItems,
       amounts: { subtotal, discount, shipping, tax, total },
       // If an online payment is required, the order waits for payment and only

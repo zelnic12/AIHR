@@ -387,3 +387,15 @@ button.admin-back {
 /* Awaiting-payment status (kept out of the fulfilment pipeline until paid) */
 .badge.awaiting_payment { background: #eef1f6; color: #55617a; }
 .board-col-head.status-awaiting_payment { border-bottom-color: #8a94a6; }
+
+
+/* Read-only review summary in the admin product edit form */
+.form-preview-reviews { font-size: .8rem; color: var(--text-secondary); margin-top: .15rem; }
+
+
+/* ---- Fulfillment pills + adapted stage label on order cards ---- */
+.order-card-tags { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .5rem; }
+.fulfil-pill { font-size: .68rem; font-weight: 700; padding: .12rem .45rem; border-radius: 999px; white-space: nowrap; }
+.fulfil-pill.delivery { background: var(--primary-light); color: var(--primary); }
+.fulfil-pill.pickup { background: #eef1f6; color: #55617a; }
+.stage-pill { font-size: .68rem; font-weight: 600; padding: .12rem .45rem; border-radius: 999px; background: var(--surface-secondary); color: var(--text-secondary); }

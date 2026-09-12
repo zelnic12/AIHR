@@ -129,7 +129,9 @@ function renderProducts() {
       <div class="card-body">
         <span class="card-cat">${esc(p.brand)} · ${esc(p.category)}</span>
         <span class="card-name">${esc(p.name)}</span>
-        <span class="card-rating">★ ${p.rating.toFixed(1)}</span>
+        ${p.reviewCount > 0
+          ? `<span class="card-rating">★ ${p.avgRating.toFixed(1)} <span class="card-rating-count">(${p.reviewCount})</span></span>`
+          : `<span class="card-rating muted">No reviews yet</span>`}
         <div class="card-bottom">
           ${priceBlock}
           <button class="add-btn" data-add="${p.id}" ${out ? "disabled" : ""}>${out ? "Sold out" : "Add to cart"}</button>
@@ -192,7 +194,11 @@ function renderProductDetail(product) {
     <div class="detail-info">
       <span class="detail-brand">${esc(product.brand)} · ${esc(product.category)}</span>
       <h2 id="detailTitle" class="detail-name">${esc(product.name)}</h2>
-      <div class="detail-rating">★ ${product.rating.toFixed(1)}</div>
+      <div class="detail-rating" id="detailRating">${
+        product.reviewCount > 0
+          ? `★ ${product.avgRating.toFixed(1)} <span class="detail-rating-count">based on ${product.reviewCount} review${product.reviewCount === 1 ? "" : "s"}</span>`
+          : `<span class="muted">No reviews yet</span>`
+      }</div>
       ${(() => {
         const d = discountInfo(product);
         return d
@@ -224,7 +230,128 @@ function renderProductDetail(product) {
         <h3>Specifications</h3>
         <table><tbody>${specsRows}</tbody></table>
       </div>
+
+      <div class="detail-reviews" id="detailReviews">
+        <h3>Customer reviews</h3>
+        <div id="reviewsList" class="reviews-list"><p class="muted">Loading reviews…</p></div>
+
+        <form id="reviewForm" class="review-form">
+          <h4>Write a review</h4>
+          <div class="review-form-row">
+            <input id="reviewName" class="review-input" type="text" maxlength="80" placeholder="Your name" required />
+            <div class="star-input" id="starInput" role="radiogroup" aria-label="Your rating">
+              ${[1,2,3,4,5].map(n => `<button type="button" class="star-btn" data-star="${n}" aria-label="${n} star${n>1?"s":""}">★</button>`).join("")}
+            </div>
+          </div>
+          <textarea id="reviewComment" class="review-input" rows="3" maxlength="2000" placeholder="Share your experience with this product…" required></textarea>
+          <p class="review-error" id="reviewError" hidden></p>
+          <button type="submit" class="btn btn-primary btn-sm" id="reviewSubmit">Submit review</button>
+        </form>
+      </div>
     </div>`;
+}
+
+// Relative "time ago" for review dates.
+function timeAgo(iso) {
+  const d = new Date(iso);
+  const s = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (Number.isNaN(s)) return "";
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60); if (m < 60) return `${m} minute${m>1?"s":""} ago`;
+  const h = Math.floor(m / 60); if (h < 24) return `${h} hour${h>1?"s":""} ago`;
+  const days = Math.floor(h / 24); if (days < 30) return `${days} day${days>1?"s":""} ago`;
+  const mo = Math.floor(days / 30); if (mo < 12) return `${mo} month${mo>1?"s":""} ago`;
+  const y = Math.floor(mo / 12); return `${y} year${y>1?"s":""} ago`;
+}
+
+// Render stars (filled up to `rating`).
+function starRow(rating) {
+  return `<span class="stars">${"★".repeat(rating)}<span class="stars-empty">${"★".repeat(5 - rating)}</span></span>`;
+}
+
+// Load + render reviews for the open product, and wire the submit form.
+function setupReviews(product) {
+  const listEl = $("#reviewsList");
+  const ratingEl = $("#detailRating");
+  let selectedStars = 0;
+
+  function renderList(reviews) {
+    if (!reviews.length) {
+      listEl.innerHTML = `<p class="muted">No reviews yet — be the first to review this product.</p>`;
+      return;
+    }
+    listEl.innerHTML = reviews.map(r => `
+      <div class="review-item">
+        <div class="review-item-head">
+          <span class="review-author">${esc(r.reviewerName)}</span>
+          <span class="review-date">${esc(timeAgo(r.createdAt))}</span>
+        </div>
+        ${starRow(r.rating)}
+        <p class="review-comment">${esc(r.comment)}</p>
+      </div>`).join("");
+  }
+
+  function updateAverage(stats) {
+    if (!ratingEl) return;
+    ratingEl.innerHTML = stats.count > 0
+      ? `★ ${Number(stats.average).toFixed(1)} <span class="detail-rating-count">based on ${stats.count} review${stats.count === 1 ? "" : "s"}</span>`
+      : `<span class="muted">No reviews yet</span>`;
+  }
+
+  async function load() {
+    try {
+      const res = await fetch(`${API_BASE}/products/${product.id}/reviews`);
+      const data = await res.json();
+      renderList(data.reviews || []);
+      updateAverage(data.stats || { count: 0, average: 0 });
+    } catch {
+      listEl.innerHTML = `<p class="review-error">Could not load reviews.</p>`;
+    }
+  }
+
+  // Star picker.
+  const starInput = $("#starInput");
+  starInput.querySelectorAll(".star-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      selectedStars = Number(btn.dataset.star);
+      starInput.querySelectorAll(".star-btn").forEach(b =>
+        b.classList.toggle("on", Number(b.dataset.star) <= selectedStars));
+    });
+  });
+
+  // Submit.
+  $("#reviewForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const err = $("#reviewError");
+    err.hidden = true;
+    const reviewerName = $("#reviewName").value.trim();
+    const comment = $("#reviewComment").value.trim();
+    if (!reviewerName) { err.textContent = "Please enter your name."; err.hidden = false; return; }
+    if (!selectedStars) { err.textContent = "Please select a star rating."; err.hidden = false; return; }
+    if (!comment) { err.textContent = "Please write a short comment."; err.hidden = false; return; }
+    const btn = $("#reviewSubmit");
+    btn.disabled = true; btn.textContent = "Submitting…";
+    try {
+      const res = await fetch(`${API_BASE}/products/${product.id}/reviews`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reviewerName, rating: selectedStars, comment }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data.details && data.details.join(" ")) || data.error || "Could not submit review.");
+      // Reset form + reload.
+      $("#reviewForm").reset();
+      selectedStars = 0;
+      starInput.querySelectorAll(".star-btn").forEach(b => b.classList.remove("on"));
+      await load();
+    } catch (e2) {
+      err.textContent = e2.message; err.hidden = false;
+    } finally {
+      btn.disabled = false; btn.textContent = "Submit review";
+    }
+  });
+
+  load();
 }
 
 function openProduct(id, updateHash = true) {
@@ -262,6 +389,9 @@ function openProduct(id, updateHash = true) {
       window.location.href = "checkout.html";
     });
   }
+
+  // Reviews: load, render, and wire the submit form.
+  setupReviews(product);
 
   const overlay = $("#detailOverlay");
   const modal = $("#detailModal");

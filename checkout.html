@@ -44,6 +44,32 @@
         <!-- Customer + shipping form -->
         <form id="checkoutForm" class="checkout-form" novalidate>
           <section class="form-section">
+            <h2>Fulfillment method</h2>
+            <div class="fulfillment-options" role="radiogroup" aria-label="Fulfillment method">
+              <label class="fulfillment-opt selected" data-method="delivery">
+                <input type="radio" name="fulfillment" value="delivery" checked />
+                <span class="fulfillment-opt-icon">🚚</span>
+                <span class="fulfillment-opt-body">
+                  <span class="fulfillment-opt-title">Delivery</span>
+                  <span class="fulfillment-opt-desc">Ship to your address · shipping fee applies</span>
+                </span>
+              </label>
+              <label class="fulfillment-opt" data-method="pickup">
+                <input type="radio" name="fulfillment" value="pickup" />
+                <span class="fulfillment-opt-icon">🏬</span>
+                <span class="fulfillment-opt-body">
+                  <span class="fulfillment-opt-title">Self Pickup at Store</span>
+                  <span class="fulfillment-opt-desc">Collect in person · no shipping fee</span>
+                </span>
+              </label>
+            </div>
+            <div class="pickup-note" id="pickupNote" hidden>
+              <strong>Pickup location</strong>
+              <span>Sinar Elektronik — please collect your order at our store during opening hours. We'll notify you by email when it's ready for pickup.</span>
+            </div>
+          </section>
+
+          <section class="form-section">
             <h2>Contact details</h2>
             <div class="field">
               <label for="fName">Full name</label>
@@ -64,7 +90,7 @@
             </div>
           </section>
 
-          <section class="form-section">
+          <section class="form-section" id="shippingSection">
             <h2>Shipping address</h2>
             <div class="field">
               <label for="fAddress">Street address</label>
@@ -111,7 +137,7 @@
           <div id="summaryItems" class="summary-items"></div>
           <div class="summary-totals">
             <div class="summary-row"><span>Subtotal</span><span id="sumSubtotal">$0.00</span></div>
-            <div class="summary-row"><span id="sumShipLabel">Shipping</span><span id="sumShipping">$0.00</span></div>
+            <div class="summary-row" id="sumShipRow"><span id="sumShipLabel">Shipping</span><span id="sumShipping">$0.00</span></div>
             <div class="summary-row"><span>Tax (est.)</span><span id="sumTax">$0.00</span></div>
             <div class="summary-row grand"><span>Total</span><strong id="sumTotal">$0.00</strong></div>
           </div>
@@ -129,7 +155,12 @@
         <div class="confirm-row"><span>Order number</span><strong id="confirmOrderId">—</strong></div>
         <div class="confirm-row"><span>Amount paid</span><strong id="confirmTotal">—</strong></div>
         <div class="confirm-row"><span>Confirmation sent to</span><strong id="confirmEmail">—</strong></div>
-        <div class="confirm-row"><span>Shipping to</span><strong id="confirmAddress">—</strong></div>
+        <div class="confirm-row"><span>Fulfillment</span><strong id="confirmMethod">—</strong></div>
+        <div class="confirm-row" id="confirmAddressRow"><span id="confirmAddressLabel">Shipping to</span><strong id="confirmAddress">—</strong></div>
+      </div>
+      <div class="pickup-note" id="confirmPickupNote" hidden>
+        <strong>Pickup location</strong>
+        <span>Sinar Elektronik — collect your order at our store during opening hours. We'll email you when it's ready.</span>
       </div>
       <div class="confirm-actions">
         <a id="viewInvoiceLink" class="btn btn-secondary" target="_blank" rel="noopener">View invoice</a>
